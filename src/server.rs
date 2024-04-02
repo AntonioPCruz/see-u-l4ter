@@ -1,5 +1,7 @@
 use base64::prelude::*;
 use chrono::{Datelike, TimeZone, Timelike};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 // use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use std::io::stdin;
@@ -61,18 +63,9 @@ impl Connection {
     }
 }
 
-// enum Server {
-//     HasKey(Key),
-//     MakingKey
-// }
-//
-// enum Connection {
-//     Encrypting(File),
-//     Decrypting(File),
-//     Waiting
-// };
-
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let listener = TcpListener::bind("127.0.0.1:8080").await?;
     let mut con = Connection::new();
     let (mut email, mut password) = (String::new(), String::new());
     stdin().read_line(&mut email).expect("oops");
@@ -84,6 +77,33 @@ fn main() {
     let local_time = chrono::Local.with_ymd_and_hms(1989, 6, 4, 0, 0, 0).unwrap();
     let result = con.generate_key_from_user(&email, &password, local_time);
     println!("{:?}", result);
+
+    loop {
+        let (mut socket, _) = listener.accept().await?;
+
+        tokio::spawn(async move {
+            let mut buf = [0; 1024];
+
+            // In a loop, read data from the socket and write the data back.
+            loop {
+                let n = match socket.read(&mut buf).await {
+                    // socket closed
+                    Ok(n) if n == 0 => return,
+                    Ok(n) => n,
+                    Err(e) => {
+                        eprintln!("failed to read from socket; err = {:?}", e);
+                        return;
+                    }
+                };
+
+                // Write the data back
+                if let Err(e) = socket.write_all(&buf[0..n]).await {
+                    eprintln!("failed to write to socket; err = {:?}", e);
+                    return;
+                }
+            }
+        });
+    }
 }
 
 #[cfg(test)]

@@ -11,3 +11,12 @@ sha2 = "0.10.8"
 hex-literal = "0.4.1"
 base64 = "0.22.0"
 chrono = "0.4.37"
+tokio = { version = "1.37.0", features = ["full"] }
+
+[[bin]]
+name = "server"
+path = "src/server.rs"
+
+[[bin]]
+name = "client"
+path = "src/client.rs"
