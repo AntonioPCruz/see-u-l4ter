@@ -66,40 +66,29 @@ impl Connection {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    let mut con = Connection::new();
-    let (mut email, mut password) = (String::new(), String::new());
-    stdin().read_line(&mut email).expect("oops");
-    stdin().read_line(&mut password).expect("oops");
-
-    let result = con.generate_key_from_now(&email, &password);
-    println!("{:?}", result);
-
-    let local_time = chrono::Local.with_ymd_and_hms(1989, 6, 4, 0, 0, 0).unwrap();
-    let result = con.generate_key_from_user(&email, &password, local_time);
-    println!("{:?}", result);
 
     loop {
         let (mut socket, _) = listener.accept().await?;
 
+        let mut con = Connection::new();
+
         tokio::spawn(async move {
-            let mut buf = [0; 1024];
+            let mut email = [0; 1024];
+            let mut pass = [0; 1024];
 
             // In a loop, read data from the socket and write the data back.
             loop {
-                let n = match socket.read(&mut buf).await {
-                    // socket closed
-                    Ok(n) if n == 0 => return,
-                    Ok(n) => n,
-                    Err(e) => {
-                        eprintln!("failed to read from socket; err = {:?}", e);
-                        return;
+                match (socket.read(&mut email).await, socket.read(&mut pass).await) {
+                    (Ok(_), Ok(_)) => {
+                        let email =
+                            String::from_utf8(email.to_vec()).expect("couldnt convert email");
+                        let password =
+                            String::from_utf8(pass.to_vec()).expect("couldnt convert pass");
+                        let result = con.generate_key_from_now(&email, &password);
+                        println!("{:?}", result);
+                        socket.write_all(result.as_bytes()).await.expect("oops");
                     }
-                };
-
-                // Write the data back
-                if let Err(e) = socket.write_all(&buf[0..n]).await {
-                    eprintln!("failed to write to socket; err = {:?}", e);
-                    return;
+                    _ => panic!("not valid"),
                 }
             }
         });
