@@ -1,10 +1,10 @@
 use base64::prelude::*;
-use chrono::{Datelike, TimeZone, Timelike};
+use chrono::{Datelike, Timelike};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 // use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
-use std::io::stdin;
+use warp::Filter;
 
 fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
     format!(
@@ -63,10 +63,18 @@ impl Connection {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
+pub async fn server() {
 
+    let hello = warp::path!("encrypt").map(|| {
+        format!("Encrypt")
+    })
+    .or(warp::path!("decrypt").map(|| {format!("Decrypt")}))
+    .or(warp::any().map(|| { format!("Any page (404)") }));
+
+    warp::serve(hello)
+        .run(([127, 0, 0, 1], 8000))
+        .await;
+    /* let listener = TcpListener::bind("127.0.0.1:8080").await?;
     loop {
         let (mut socket, _) = listener.accept().await?;
 
@@ -92,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         });
-    }
+    } */
 }
 
 #[cfg(test)]

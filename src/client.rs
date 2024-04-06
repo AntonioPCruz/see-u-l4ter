@@ -3,8 +3,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::select;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+pub async fn client() -> Result<(), Box<dyn Error>> {
     let addr = "127.0.0.1:8080";
     let mut stream = TcpStream::connect(addr).await?;
     let (reader, mut writer) = stream.split();
