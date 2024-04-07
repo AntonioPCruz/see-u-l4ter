@@ -1,32 +1,26 @@
-use std::error::Error;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpStream;
-use tokio::select;
+use reqwest::Client;
+use serde_json::json;
 
-pub async fn client() -> Result<(), Box<dyn Error>> {
-    let addr = "127.0.0.1:8080";
-    let mut stream = TcpStream::connect(addr).await?;
-    let (reader, mut writer) = stream.split();
-    let mut socket_lines = BufReader::new(reader).lines();
-    let mut stdin_lines = BufReader::new(tokio::io::stdin()).lines();
-    println!("Connected to server.");
-    loop {
-        select!(
-            result = socket_lines.next_line() => {
-                let Some(line) = result? else { break };
-                println!("Response: {line}");
-            },
-            result = stdin_lines.next_line() => {
-                let Some(email) = result? else { break };
-                let password = stdin_lines.next_line();
-                let Some(password) = password.await? else {break};
-                writer.write_all(email.as_bytes()).await?;
-                writer.flush().await?;
+pub async fn client() -> Result<(), Box<dyn std::error::Error>> {
+    let request_body = json!({
+        "uid": 52,
+        "email": "example@example.com",
+        "encrypted_password": "password123"
+    });
 
-                writer.write_all(password.as_bytes()).await?;
-                writer.flush().await?;
-            },
-        )
+    let client = Client::new();
+
+    let response = client
+        .post("http://127.0.0.1:8000/login")
+        .json(&request_body)
+        .send()
+        .await?;
+
+    if response.status().is_success() {
+        println!("Login success. Key = {}", response.text().await?);
+    } else {
+        println!("Login failed: {}", response.status());
     }
+
     Ok(())
 }

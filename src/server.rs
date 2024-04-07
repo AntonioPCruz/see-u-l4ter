@@ -1,12 +1,23 @@
 use base64::prelude::*;
 use chrono::{Datelike, Timelike};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
+use std::collections::HashMap;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
+};
 // use hmac::{Hmac, Mac};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use warp::Filter;
 
-fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
+#[derive(Clone, Debug, Deserialize)]
+struct User {
+    uid: u32,
+    email: String,
+    encrypted_password: String,
+}
+
+pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
     format!(
         "{}:{:02}:{:02}:{:02}:{:02}",
         d.year(),
@@ -17,14 +28,20 @@ fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
     )
 }
 
+#[derive(Debug, Deserialize)]
 struct Connection {
     current_key: String,
+    user: User,
 }
 
+static NEXT_CON_ID: AtomicUsize = AtomicUsize::new(1);
+type Connections = Arc<Mutex<HashMap<usize, Connection>>>;
+
 impl Connection {
-    pub fn new() -> Self {
+    pub fn new(user: User) -> Self {
         Connection {
             current_key: String::new(),
+            user,
         }
     }
 
@@ -52,7 +69,7 @@ impl Connection {
         self.get_key(email, password, res)
     }
 
-    fn generate_key_from_user(
+    fn generate_key_from_date(
         &mut self,
         email: &str,
         password: &str,
@@ -64,43 +81,42 @@ impl Connection {
 }
 
 pub async fn server() {
+    let connects: Connections = Arc::new(Mutex::new(HashMap::new()));
+    let connects = warp::any().map(move || connects.clone());
 
-    let hello = warp::path!("encrypt").map(|| {
-        format!("Encrypt")
-    })
-    .or(warp::path!("decrypt").map(|| {format!("Decrypt")}))
-    .or(warp::any().map(|| { format!("Any page (404)") }));
+    let login = warp::path!("login")
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(connects)
+        .and_then(user_connected);
 
-    warp::serve(hello)
-        .run(([127, 0, 0, 1], 8000))
-        .await;
-    /* let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    loop {
-        let (mut socket, _) = listener.accept().await?;
+    let hello = login;
 
-        let mut con = Connection::new();
+    warp::serve(hello).run(([127, 0, 0, 1], 8000)).await;
+}
 
-        tokio::spawn(async move {
-            let mut email = [0; 1024];
-            let mut pass = [0; 1024];
+#[derive(Debug, Serialize)]
+struct Response {
+    msg: String,
+}
 
-            // In a loop, read data from the socket and write the data back.
-            loop {
-                match (socket.read(&mut email).await, socket.read(&mut pass).await) {
-                    (Ok(_), Ok(_)) => {
-                        let email =
-                            String::from_utf8(email.to_vec()).expect("couldnt convert email");
-                        let password =
-                            String::from_utf8(pass.to_vec()).expect("couldnt convert pass");
-                        let result = con.generate_key_from_now(&email, &password);
-                        println!("{:?}", result);
-                        socket.write_all(result.as_bytes()).await.expect("oops");
-                    }
-                    _ => panic!("not valid"),
-                }
-            }
-        });
-    } */
+async fn user_connected(
+    user: User,
+    connects: Connections,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let con_id = NEXT_CON_ID.fetch_add(1, Ordering::Relaxed);
+    eprintln!("new user, id = {}, connection id = {}", user.uid, con_id);
+
+    let mut con = Connection::new(user.clone());
+    con.generate_key_from_now(&user.email, &user.encrypted_password);
+
+    let k = con.current_key.clone();
+
+    connects.lock().unwrap().insert(con_id, con);
+
+    println!("connections = {:?}", connects);
+
+    Ok(warp::reply::json(&(Response { msg: k })))
 }
 
 #[cfg(test)]
@@ -109,12 +125,16 @@ mod test {
 
     #[test]
     fn get_key_test() {
-        let mut con = Connection::new();
-        let email = "testing".to_string();
-        let password = "test".to_string();
+        let mut con = Connection::new(User {
+            uid: 1,
+            email: "testing".to_string(),
+            encrypted_password: "test".to_string(),
+        });
 
         let date = "1989:06:04:00:00";
-        con.get_key(&email, &password, date.to_string());
+        let email = con.user.email.clone();
+        let pass = con.user.encrypted_password.clone();
+        con.get_key(&email, &pass, date.to_string());
         assert_eq!(
             con.current_key,
             "LdfMAYTPMb3Vh2fBvQ7FPxN3qBktsLu0GvaDo3VE/Bw="
