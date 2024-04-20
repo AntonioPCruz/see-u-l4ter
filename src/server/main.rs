@@ -1,3 +1,5 @@
+use std::time::UNIX_EPOCH;
+
 use axum::{
     routing::{get, post},
     Json, Router,
@@ -6,8 +8,9 @@ use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
 use once_cell::sync::Lazy;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-pub mod data;
+mod data;
 mod jwt;
+mod keygen;
 
 use crate::data::*;
 
@@ -32,6 +35,7 @@ async fn main() {
     let app = Router::new()
         .route("/protected", get(protected))
         .layer(axum::middleware::from_fn(jwt::refresh_middleware))
+        .layer(axum::middleware::from_fn(keygen::keygen_middleware))
         .route("/authorize", post(authorize));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
@@ -59,14 +63,15 @@ async fn authorize(Json(payload): Json<AuthPayload>) -> Result<Json<AuthBody>, A
     if payload.client_id != "foo" || payload.client_secret != "bar" {
         return Err(AuthError::WrongCredentials);
     }
+    let now = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
     let claims = Claims {
-        sub: "b@b.com".to_owned(),
-        company: "ACME".to_owned(),
-        exp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_secs() as usize
-            + (60 * 5), // 5 mins
+        email: "b@b.com".to_owned(),
+        key: "key".to_owned(),
+        key_timestamp: now,
+        exp: now as usize + (60 * 5), // 5 mins
     };
     // Create the authorization token
     let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)

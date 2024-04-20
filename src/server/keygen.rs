@@ -5,9 +5,10 @@ use axum_extra::{
 };
 use jsonwebtoken::{decode, encode, Header as OtherHeader, TokenData, Validation};
 
-use crate::{AuthError, Claims, KEYS};
+use crate::data::*;
+use crate::KEYS;
 
-pub async fn refresh_middleware(
+pub async fn keygen_middleware(
     TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
     request: Request,
     next: Next,
@@ -18,14 +19,19 @@ pub async fn refresh_middleware(
 
     let mut response = next.run(request).await;
 
-    match token_is_valid(&token_data) {
-        true => {
-            let claims = Claims {
+    match key_is_valid(&token_data.claims.key_timestamp) {
+        (_, true) => Ok(response),
+        (now, false) => {
+            let mut claims = Claims {
                 email: token_data.claims.email,
-                key: token_data.claims.key,
-                key_timestamp: token_data.claims.key_timestamp,
-                exp: token_data.claims.exp + 60,
+                key: String::new(),
+                key_timestamp: now + (60 * 5), // 5 minutes
+                exp: token_data.claims.exp,
             };
+
+            claims.generate_key_from_now("testing");
+
+            println!("key = {}", claims.key);
 
             let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)
                 .map_err(|_| AuthError::TokenCreation)
@@ -38,15 +44,16 @@ pub async fn refresh_middleware(
 
             Ok(response)
         }
-        false => Err(AuthError::InvalidToken),
     }
 }
 
-fn token_is_valid(token: &TokenData<Claims>) -> bool {
+fn key_is_valid(key_timestamp: &u64) -> (u64, bool) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("Time went backwards")
-        .as_secs() as usize;
+        .as_secs();
 
-    token.claims.exp > now
+    println!("{} vs {}", now, key_timestamp);
+
+    (now, now < *key_timestamp)
 }

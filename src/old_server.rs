@@ -80,13 +80,13 @@ impl Connection {
         key
     }
 
-    fn generate_key_from_now(&mut self, email: &str, password: &str) -> String {
+    pub fn generate_key_from_now(&mut self, email: &str, password: &str) -> String {
         let now = chrono::offset::Local::now();
         let res = str_of_date(now);
         self.get_key(email, password, res)
     }
 
-    fn generate_key_from_date(
+    pub fn generate_key_from_date(
         &mut self,
         email: &str,
         password: &str,
@@ -113,28 +113,35 @@ pub async fn server() {
         .and(warp::body::json())
         .and(secret_key)
         .and_then(refresh_token);
-    let auth_route = warp::path!("teste").and(auth(secret_key)).and_then(teste_route);
+    let auth_route = warp::path!("teste")
+        .and(auth(secret_key))
+        .and_then(teste_route);
 
     let hello = login.or(refresh_token).or(auth_route);
 
     warp::serve(hello).run(([127, 0, 0, 1], 8000)).await;
 }
 
-fn auth<F: Filter + Clone>(s: F) -> impl Filter<Extract = (User,), Error = Rejection> + Copy where <F as warp::filters::FilterBase>::Error: warp::reject::sealed::CombineRejection<Rejection> {
-    warp::header::<String>("access_token").and(s).and_then(|_access_token, secret| async move {
-        match decode::<Claims>(
-            &("".to_string()),
-            &DecodingKey::from_secret(secret.as_bytes()),
-            &Validation::default(),
-        ) {
-            Ok(TokenData { claims, .. }) => Ok(User {
-                email: claims.email,
-                uid: claims.user_id,
-                encrypted_password: "".to_string(),
-            }),
-            Err(_) => Err(warp::reject::reject()),
-        }
-    })
+fn auth<F: Filter + Clone>(s: F) -> impl Filter<Extract = (User,), Error = Rejection> + Copy
+where
+    <F as warp::filters::FilterBase>::Error: warp::reject::sealed::CombineRejection<Rejection>,
+{
+    warp::header::<String>("access_token")
+        .and(s)
+        .and_then(|_access_token, secret| async move {
+            match decode::<Claims>(
+                &("".to_string()),
+                &DecodingKey::from_secret(secret.as_bytes()),
+                &Validation::default(),
+            ) {
+                Ok(TokenData { claims, .. }) => Ok(User {
+                    email: claims.email,
+                    uid: claims.user_id,
+                    encrypted_password: "".to_string(),
+                }),
+                Err(_) => Err(warp::reject::reject()),
+            }
+        })
 }
 
 async fn teste_route(user: User) -> Result<impl warp::Reply, warp::Rejection> {

@@ -9,12 +9,26 @@ use axum_extra::{
     headers::{authorization::Bearer, Authorization},
     TypedHeader,
 };
+use base64::prelude::*;
+use chrono::{Datelike, Timelike};
 use jsonwebtoken::{decode, DecodingKey, EncodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::fmt::Display;
 
 use crate::KEYS;
+
+pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
+    format!(
+        "{}:{:02}:{:02}:{:02}:{:02}",
+        d.year(),
+        d.month(),
+        d.day(),
+        d.hour(),
+        d.minute()
+    )
+}
 
 impl Display for Claims {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -23,8 +37,8 @@ impl Display for Claims {
         let newdate = ndt.format("%Y-%m-%d %H:%M:%S");
         write!(
             f,
-            "Email: {}\nCompany: {}\nExpiry: {}",
-            self.sub, self.company, newdate
+            "Email: {}\nCurrent Key: {}\nKey Expiry: {}\nToken Expiry: {}",
+            self.email, self.key, self.key_timestamp, newdate
         )
     }
 }
@@ -95,9 +109,46 @@ impl Keys {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,
-    pub company: String,
+    pub email: String,
+    pub key: String,
+    pub key_timestamp: u64,
     pub exp: usize,
+}
+
+impl Claims {
+    fn get_key(&mut self, email: &str, password: &str, date: String) -> String {
+        let scrt = {
+            let mut tmp = email.to_string().trim().to_string();
+            tmp.push_str("tenho 4 bananas no frigorifico");
+            tmp.push_str(password.trim());
+            tmp.push_str(&date);
+            tmp
+        };
+        let mut hasher = Sha256::new();
+        hasher.update(scrt);
+
+        // read hash digest and consume hasher
+        let key = BASE64_STANDARD.encode(hasher.finalize());
+        self.key = key.clone();
+        key
+    }
+
+    pub fn generate_key_from_now(&mut self, password: &str) -> String {
+        let now = chrono::offset::Local::now();
+        let res = str_of_date(now);
+        let email = self.email.clone();
+        self.get_key(&email, password, res)
+    }
+
+    pub fn generate_key_from_date(
+        &mut self,
+        password: &str,
+        date: chrono::DateTime<chrono::Local>,
+    ) -> String {
+        let res = str_of_date(date);
+        let email = self.email.clone();
+        self.get_key(&email, password, res)
+    }
 }
 
 #[derive(Debug, Serialize)]
