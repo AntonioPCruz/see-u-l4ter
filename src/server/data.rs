@@ -85,7 +85,7 @@ impl IntoResponse for AuthError {
             AuthError::MissingCredentials => (StatusCode::BAD_REQUEST, "Missing credentials."),
             AuthError::DuplicateAccount => (
                 StatusCode::BAD_REQUEST,
-                "Duplicate account, choose another email.",
+                "Email already in use, kindly choose another email.",
             ),
             AuthError::TokenCreation => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Token creation error.")
@@ -179,6 +179,20 @@ pub struct RegisterPayload {
     pub client_secret: String,
 }
 
+/* cipher and hmac codes:
+    1 -> AES-128-CBC
+    2 -> AES-128-CTR
+
+    1 -> SHA256
+    2 -> SHA512
+*/
+
+#[derive(Debug, Deserialize)]
+pub struct EncryptNowPayload {
+    pub cipher: u8,
+    pub hmac: u8,
+}
+
 #[derive(Debug)]
 pub enum AuthError {
     WrongCredentials,
@@ -186,4 +200,9 @@ pub enum AuthError {
     MissingCredentials,
     TokenCreation,
     InvalidToken,
+}
+
+#[derive(Debug)]
+pub enum ApiError {
+    InvalidFile,
 }

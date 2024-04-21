@@ -18,16 +18,26 @@
 ```bash
 make install
 
+# register
 curl -s -k \
 -w '\n' \
 -H 'Content-Type: application/json' \
--d '{"name": "corno", "email" : "foo", "client_secret" : "bar"}' \
+-d '{"name": "baz", "email" : "foo", "client_secret" : "bar"}' \
 -X POST https://localhost:3000/register
 
+# login
 curl -s -k \
 -w '\n' \
 -H 'Content-Type: application/json' \
 -d '{"email" : "foo", "client_secret" : "bar"}' \
 -X POST \
 https://localhost:3000/login
+
+# send file
+curl -v -s -k \
+-w '\n' \
+-H 'Content-Type: multipart/form-data' \
+-H 'Authorization: Bearer ...' \
+-F "data=@Cargo.lock" \
+-X POST https://localhost:3000/api/now/encrypt
 ```
