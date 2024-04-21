@@ -67,11 +67,24 @@ async fn main() {
 
     println!("TLS certificates read!");
 
+    /* Routes:
+       /api/now/encrypt   -> encrypt with a key relating to the current timestamp. Input: File to encrypt, Cipher used;       Outputs: Encrypted file and HMAC
+       /api/now/decrypt   -> decrypt with a key relating to the current timestamp. Input: File to decrypt, HMAC, Cipher used; Outputs: Decrypted file
+       /api/later/encrypt -> encrypt with a key relating to a later timestamp, provided by the user. Input: File, Timestamp, Cipher used
+       /login     -> login route. Input: email and password
+       /register  -> register route. Input: email and password
+    */
+
     let app = Router::new()
         .route("/protected", get(protected))
+        // .route("/api/now/encrypt", get(encrypt_now))
+        // .route("/api/later/encrypt", get(encrypt_later))
+        // .route("/api/now/decrypt", get(decrypt))
         .layer(axum::middleware::from_fn(jwt::refresh_middleware))
         .layer(axum::middleware::from_fn(keygen::keygen_middleware))
-        .route("/authorize", post(authorize));
+        .route("/login", post(login))
+        // .route("/register", get(register))
+    ;
 
     println!("TLS Server started!");
     // run https server
@@ -89,7 +102,7 @@ async fn protected(claims: Claims) -> Result<String, AuthError> {
     ))
 }
 
-async fn authorize(Json(payload): Json<AuthPayload>) -> Result<Json<AuthBody>, AuthError> {
+async fn login(Json(payload): Json<AuthPayload>) -> Result<Json<AuthBody>, AuthError> {
     // Check if the user sent the credentials
     if payload.email.is_empty() || payload.client_secret.is_empty() {
         return Err(AuthError::MissingCredentials);
