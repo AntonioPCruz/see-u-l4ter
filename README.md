@@ -12,3 +12,4 @@
 - logs de atividade
 - SSL/TLS ou LetsEncrypt para a ligacao do cli/site com o backend
 - base de dados da backend encriptada
+

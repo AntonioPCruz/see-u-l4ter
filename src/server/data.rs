@@ -32,13 +32,18 @@ pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
 
 impl Display for Claims {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ndt =
+        let t_exp =
             chrono::DateTime::from_timestamp(self.exp as i64, 0).expect("Couldnt create timestamp");
-        let newdate = ndt.format("%Y-%m-%d %H:%M:%S");
+        let t_exp = t_exp.format("%Y-%m-%d %H:%M:%S");
+
+        let k_exp = chrono::DateTime::from_timestamp(self.key_timestamp as i64, 0)
+            .expect("Couldnt create timestamp");
+        let k_exp = k_exp.format("%Y-%m-%d %H:%M:%S");
+
         write!(
             f,
             "Email: {}\nCurrent Key: {}\nKey Expiry: {}\nToken Expiry: {}",
-            self.email, self.key, self.key_timestamp, newdate
+            self.email, self.key, k_exp, t_exp
         )
     }
 }
@@ -159,7 +164,7 @@ pub struct AuthBody {
 
 #[derive(Debug, Deserialize)]
 pub struct AuthPayload {
-    pub client_id: String,
+    pub email: String,
     pub client_secret: String,
 }
 

@@ -1,2 +1,5 @@
 .DS_Store
 target/
+
+certs/cert.pem
+certs/key.pem
