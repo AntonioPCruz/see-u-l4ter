@@ -10,6 +10,8 @@ use axum_server::tls_rustls::RustlsConfig;
 use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
 use once_cell::sync::Lazy;
+use ring::{digest, pbkdf2, rand};
+use sha2::{Digest, Sha256};
 use sqlx::Row;
 use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
 use std::time::UNIX_EPOCH;
@@ -18,8 +20,25 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod data;
 mod jwt;
 mod keygen;
+use argon2::{
+    password_hash::{
+        rand_core::OsRng,
+        PasswordHash, PasswordHasher, PasswordVerifier, SaltString
+    },
+    Argon2
+};
 
 use crate::data::*;
+
+fn hash_pass(p: String) -> String {
+    let salt = SaltString::generate(&mut OsRng);
+
+    // Argon2 with default params (Argon2id v19)
+    let argon2 = Argon2::default();
+
+    // Hash password to PHC string ($argon2id$v=19$...)
+    argon2.hash_password(&p.into_bytes(), &salt).expect("Hash failed!").to_string()
+}
 
 static KEYS: Lazy<Keys> = Lazy::new(|| {
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
@@ -117,9 +136,8 @@ async fn login(
         return Err(AuthError::MissingCredentials);
     }
 
-    let user = sqlx::query("SELECT * FROM users WHERE ? = email AND ? = password")
+    let user = sqlx::query("SELECT * FROM users WHERE ? = email")
         .bind(payload.email)
-        .bind(payload.client_secret)
         .fetch_one(&pool)
         .await;
 
@@ -127,6 +145,12 @@ async fn login(
         Ok(u) => u,
         Err(_) => return Err(AuthError::WrongCredentials),
     };
+
+    let p: String = user.get("password");
+    let p_hash = PasswordHash::new(p.as_ref()).expect("AA");
+    if Argon2::default().verify_password(&payload.client_secret.into_bytes(), &p_hash).is_err() {
+        return Err(AuthError::WrongCredentials);
+    }
 
     let now = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -168,11 +192,11 @@ async fn register(
         Err(_) => {}
     };
 
-    let user =
+    let _ =
         sqlx::query("INSERT INTO users (name, email, password, verified) VALUES (?, ?, ?, 1)")
             .bind(payload.name)
             .bind(payload.email.clone())
-            .bind(payload.client_secret)
+            .bind(hash_pass(payload.client_secret))
             .execute(&mut *conn)
             .await
             .expect("oopsies")
