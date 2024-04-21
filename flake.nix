@@ -10,7 +10,7 @@ let
 in { 
   devShell.${system} = pkgs.mkShell {
     name = "openssl-shell";
-    buildInputs = with pkgs; [ ncurses6 ];
+    buildInputs = with pkgs; [ openssl ncurses ];
 
     shellHook = ''
       export OPENSSL_DIR=${pkgs.openssl.dev};

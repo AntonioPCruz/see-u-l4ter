@@ -26,14 +26,13 @@ use argon2::{
     Argon2,
 };
 
-use openssl::symm::{encrypt, Cipher};
-
-use futures_util::stream::StreamExt;
-
 use crate::data::*;
+use base64::prelude::*;
+use futures_util::stream::StreamExt;
+use openssl::symm::{encrypt, Cipher};
+use std::collections::HashMap;
 
-
-static IV : &[u8, 8] = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03\x04\x05\x06\x07";
+static IV: &[u8; 16] = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03\x04\x05\x06\x07";
 
 fn hash_pass(p: String) -> String {
     let salt = SaltString::generate(&mut OsRng);
@@ -135,22 +134,55 @@ async fn protected(claims: Claims) -> Result<String, AuthError> {
     ))
 }
 
-async fn encrypt_now(mut mp: Multipart, Form(details): Form<EncryptNowPayload>, claims: Claims) {
-    let (cipher, _hmac) = match (details.cipher, details.hmac) {
+/* cipher and hmac codes:
+    1 -> AES-128-CBC
+    2 -> AES-128-CTR
+
+    1 -> SHA256
+    2 -> SHA512
+*/
+
+async fn encrypt_now(claims: Claims, mut mp: Multipart) {
+    use std::fs;
+    let mut form = HashMap::new();
+
+    while let Some(field) = mp.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+        let data = field.bytes().await.unwrap();
+
+        form.insert(name.clone(), data.clone());
+        println!("Length of `{}` is {} bytes", name, data.len());
+    }
+
+    let file = form.clone().get("data").expect("No file (data)").to_vec();
+    let cipher_bytes = form
+        .clone()
+        .get("cipher")
+        .expect("Cipher not in form")
+        .to_vec();
+
+    let hmac_bytes = form.get("hmac").expect("Hmac not in form").to_vec();
+
+    let c = u8::from_ne_bytes([cipher_bytes[0]]) - '0' as u8;
+    let h = u8::from_ne_bytes([hmac_bytes[0]]) - '0' as u8;
+
+    let (cipher, _hmac) = match (c, h) {
         (1, 1) => (Cipher::aes_128_cbc(), hmac::HMAC_SHA256),
         (1, 2) => (Cipher::aes_128_ecb(), hmac::HMAC_SHA512),
         (2, 1) => (Cipher::aes_128_ctr(), hmac::HMAC_SHA256),
         (2, 2) => (Cipher::aes_128_ctr(), hmac::HMAC_SHA512),
-        _ => panic!(),
+        _ => {
+            println!("{}, {}", c, h);
+            panic!()
+        }
     };
 
-    while let Some(mut field) = mp.next_field().await.unwrap() {
-        let name = field.name().unwrap().to_string();
-        let data = field.bytes().await.unwrap();
+    let key = &BASE64_STANDARD
+        .decode(claims.key)
+        .expect("Couldnt decode base64 key")[0..16];
 
-
-        println!("Length of `{}` is {} bytes", name, data.len());
-    }
+    println!("Encrypting!\nKey length = {}", key.len());
+    let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
 }
 
 async fn login(

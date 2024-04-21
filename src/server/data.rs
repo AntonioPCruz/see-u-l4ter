@@ -179,20 +179,6 @@ pub struct RegisterPayload {
     pub client_secret: String,
 }
 
-/* cipher and hmac codes:
-    1 -> AES-128-CBC
-    2 -> AES-128-CTR
-
-    1 -> SHA256
-    2 -> SHA512
-*/
-
-#[derive(Debug, Deserialize)]
-pub struct EncryptNowPayload {
-    pub cipher: u8,
-    pub hmac: u8,
-}
-
 #[derive(Debug)]
 pub enum AuthError {
     WrongCredentials,

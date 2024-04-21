@@ -33,11 +33,13 @@ curl -s -k \
 -X POST \
 https://localhost:3000/login
 
-# send file
+# encrypt with now timestamp
 curl -v -s -k \
 -w '\n' \
 -H 'Content-Type: multipart/form-data' \
 -H 'Authorization: Bearer ...' \
--F "data=@Cargo.lock" \
+-F "data=@/path/to/file" \
+-F "cipher=1" \
+-F "hmac=1" \
 -X POST https://localhost:3000/api/now/encrypt
 ```
