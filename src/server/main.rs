@@ -1,7 +1,6 @@
-use std::time::UNIX_EPOCH;
-
 use axum::{
     extract::Host,
+    extract::State,
     handler::HandlerWithoutStateExt,
     http::{StatusCode, Uri},
     response::Redirect,
@@ -12,6 +11,8 @@ use axum_server::tls_rustls::RustlsConfig;
 use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
 use once_cell::sync::Lazy;
+use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
+use std::time::UNIX_EPOCH;
 use std::{net::SocketAddr, path::PathBuf};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod data;
@@ -67,6 +68,8 @@ async fn main() {
 
     println!("TLS certificates read!");
 
+    let sqlpool = SqlitePool::connect(std::env::var("DATABASE_URL")).await?;
+
     /* Routes:
        /api/now/encrypt   -> encrypt with a key relating to the current timestamp. Input: File to encrypt, Cipher used;       Outputs: Encrypted file and HMAC
        /api/now/decrypt   -> decrypt with a key relating to the current timestamp. Input: File to decrypt, HMAC, Cipher used; Outputs: Decrypted file
@@ -83,6 +86,7 @@ async fn main() {
         .layer(axum::middleware::from_fn(jwt::refresh_middleware))
         .layer(axum::middleware::from_fn(keygen::keygen_middleware))
         .route("/login", post(login))
+        .with_state(sqlpool)
         // .route("/register", get(register))
     ;
 
@@ -102,25 +106,89 @@ async fn protected(claims: Claims) -> Result<String, AuthError> {
     ))
 }
 
-async fn login(Json(payload): Json<AuthPayload>) -> Result<Json<AuthBody>, AuthError> {
+async fn login(
+    pool: State<Pool<Sqlite>>,
+    Json(payload): Json<AuthPayload>,
+) -> Result<Json<AuthBody>, AuthError> {
     // Check if the user sent the credentials
     if payload.email.is_empty() || payload.client_secret.is_empty() {
         return Err(AuthError::MissingCredentials);
     }
-    // Here you can check the user credentials from a database
-    if payload.email != "foo" || payload.client_secret != "bar" {
-        return Err(AuthError::WrongCredentials);
-    }
+
+    let user = sqlx::query("SELECT * FROM users WHERE ? = email AND ? = password")
+        .bind(payload.email)
+        .bind(payload.client_secret)
+        .fetch_one(pool)
+        .await
+        .expect("oopsies");
+
+    let user = match user {
+        Ok(u) => u,
+        Err(_) => return Err(AuthError::WrongCredentials),
+    };
+
     let now = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_secs();
-    let claims = Claims {
-        email: "b@b.com".to_owned(),
-        key: "key".to_owned(),
-        key_timestamp: now,
+    let mut claims = Claims {
+        email: user.email,
+        key: String::new(),
+        key_timestamp: now + (60 * 5),
         exp: now as usize + (60 * 5), // 5 mins
     };
+
+    claims.generate_key_from_now("testing");
+
+    // Create the authorization token
+    let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)
+        .map_err(|_| AuthError::TokenCreation)?;
+
+    // Send the authorized token
+    Ok(Json(AuthBody::new(token)))
+}
+
+async fn register(
+    pool: State<Pool<Sqlite>>,
+    Json(payload): Json<RegisterPayload>,
+) -> Result<Json<AuthBody>, AuthError> {
+    // Check if the user sent the credentials
+    if payload.email.is_empty() || payload.client_secret.is_empty() {
+        return Err(AuthError::MissingCredentials);
+    }
+
+    let mut conn = pool.acquire().await.expect("oopsies");
+    match sqlx::query("SELECT * FROM users WHERE ? = email")
+        .bind(payload.email)
+        .fetch_one(conn)
+        .await
+    {
+        Ok(u) => return Err(AuthError::DuplicateAccount),
+        Err(_) => {}
+    };
+
+    let user =
+        sqlx::query("INSERT INTO users (name, email, password, verified) VALUES (?, ?, ?, 1)")
+            .bind(payload.name)
+            .bind(payload.email)
+            .bind(payload.client_secret)
+            .execute(&mut *conn)
+            .await?
+            .last_insert_rowid();
+
+    let now = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
+    let mut claims = Claims {
+        email: payload.email,
+        key: String::new(),
+        key_timestamp: now + (60 * 5),
+        exp: now as usize + (60 * 5), // 5 mins
+    };
+
+    claims.generate_key_from_now("testing");
+
     // Create the authorization token
     let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)
         .map_err(|_| AuthError::TokenCreation)?;

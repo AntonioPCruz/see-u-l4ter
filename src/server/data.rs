@@ -83,6 +83,10 @@ impl IntoResponse for AuthError {
         let (status, error_message) = match self {
             AuthError::WrongCredentials => (StatusCode::UNAUTHORIZED, "Wrong credentials."),
             AuthError::MissingCredentials => (StatusCode::BAD_REQUEST, "Missing credentials."),
+            AuthError::DuplicateAccount => (
+                StatusCode::BAD_REQUEST,
+                "Duplicate account, choose another email.",
+            ),
             AuthError::TokenCreation => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Token creation error.")
             }
@@ -168,9 +172,17 @@ pub struct AuthPayload {
     pub client_secret: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RegisterPayload {
+    pub name: String,
+    pub email: String,
+    pub client_secret: String,
+}
+
 #[derive(Debug)]
 pub enum AuthError {
     WrongCredentials,
+    DuplicateAccount,
     MissingCredentials,
     TokenCreation,
     InvalidToken,

@@ -53,7 +53,5 @@ fn key_is_valid(key_timestamp: &u64) -> (u64, bool) {
         .expect("Time went backwards")
         .as_secs();
 
-    println!("{} vs {}", now, key_timestamp);
-
     (now, now < *key_timestamp)
 }
