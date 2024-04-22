@@ -39,7 +39,9 @@ curl -v -s -k \
 -H 'Content-Type: multipart/form-data' \
 -H 'Authorization: Bearer ...' \
 -F "data=@/path/to/file" \
+-F "filename=file" \
 -F "cipher=1" \
 -F "hmac=1" \
--X POST https://localhost:3000/api/now/encrypt
+-X POST https://localhost:3000/api/now/encrypt \
+-o file.enc
 ```

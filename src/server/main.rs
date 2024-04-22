@@ -1,8 +1,9 @@
 use axum::{
-    extract::{Host, Multipart, State},
+    body::Body,
+    extract::{Host, Multipart, Request, State},
     handler::HandlerWithoutStateExt,
-    http::{StatusCode, Uri},
-    response::Redirect,
+    http::{header, StatusCode, Uri},
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     BoxError, Extension, Form, Json, Router,
 };
@@ -142,7 +143,7 @@ async fn protected(claims: Claims) -> Result<String, AuthError> {
     2 -> SHA512
 */
 
-async fn encrypt_now(claims: Claims, mut mp: Multipart) {
+async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     use std::fs;
     let mut form = HashMap::new();
 
@@ -183,6 +184,19 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) {
 
     println!("Encrypting!\nKey length = {}", key.len());
     let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
+
+    let headers = [
+        (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+        (
+            header::CONTENT_DISPOSITION,
+            &format!(
+                "attachment; filename=\"{}.enc\"",
+                String::from_utf8(form.get("filename").expect("No filename in form").to_vec())
+                    .expect("Error creating string from UTF-8 bytes")
+            ),
+        ),
+    ];
+    (headers, ciphertext).into_response()
 }
 
 async fn login(
