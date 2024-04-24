@@ -19,6 +19,7 @@ use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
 use std::time::UNIX_EPOCH;
 use std::{net::SocketAddr, path::PathBuf};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use zip::write::SimpleFileOptions;
 mod data;
 mod jwt;
 mod keygen;
@@ -32,6 +33,7 @@ use base64::prelude::*;
 use futures_util::stream::StreamExt;
 use openssl::symm::{encrypt, Cipher};
 use std::collections::HashMap;
+use std::io::Write;
 
 static IV: &[u8; 16] = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03\x04\x05\x06\x07";
 
@@ -185,18 +187,35 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     println!("Encrypting!\nKey length = {}", key.len());
     let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
 
+    let mut buf = [0; 65536];
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let filename = String::from_utf8(form.get("filename").expect("No filename in form").to_vec())
+        .expect("Error creating string from UTF-8 bytes");
+
+    let filename_enc = format!("{}.enc", filename.clone());
+    zip.start_file(filename_enc, options)
+        .expect("Couldnt create file inside zip");
+    zip.write(ciphertext.as_slice())
+        .expect("Couldnt write to file inside zip");
+
+    let filename_hmac = format!("{}.hmac", filename.clone());
+    zip.start_file(filename_hmac, options)
+        .expect("Couldnt create file inside zip");
+    zip.write(b"hmac")
+        .expect("Couldnt write to file inside zip");
+
+    zip.finish().expect("Couldnt finish zip");
+    drop(zip);
+
     let headers = [
-        (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+        (header::CONTENT_TYPE, "application/zip; charset=utf-8"),
         (
             header::CONTENT_DISPOSITION,
-            &format!(
-                "attachment; filename=\"{}.enc\"",
-                String::from_utf8(form.get("filename").expect("No filename in form").to_vec())
-                    .expect("Error creating string from UTF-8 bytes")
-            ),
+            &format!("attachment; filename=\"{}.zip\"", filename),
         ),
     ];
-    (headers, ciphertext).into_response()
+    (headers, buf).into_response()
 }
 
 async fn login(

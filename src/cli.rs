@@ -95,7 +95,7 @@ async fn main() {
             let email_regex = Regex::new(EMAIL_REGEX_PATTERN).unwrap();
             let config_path = xdg_dirs
                 .place_config_file("config.ini")
-                .expect("Couln't place config file in xdg folder");
+                .expect("Couldn't place config file in xdg folder");
 
             println!("Welcome to see-u-l4ter! As this is your first time starting the program, kindly provide us with your email:");
             loop {
