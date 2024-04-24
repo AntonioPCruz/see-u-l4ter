@@ -754,22 +754,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossterm"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f476fe445d41c9e991fd07515a6f463074b782242ccf4a5b7b1d1012e70824df"
-dependencies = [
- "bitflags 2.5.0",
- "crossterm_winapi",
- "libc",
- "mio",
- "parking_lot",
- "signal-hook",
- "signal-hook-mio",
- "winapi",
-]
-
-[[package]]
 name = "crossterm_winapi"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1482,7 +1466,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe95f33091b9b7b517a5849bce4dce1b550b430fc20d58059fcaa319ed895d8b"
 dependencies = [
  "bitflags 2.5.0",
- "crossterm 0.25.0",
+ "crossterm",
  "dyn-clone",
  "fuzzy-matcher",
  "fxhash",
@@ -1756,17 +1740,6 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
-]
-
-[[package]]
-name = "ncurses"
-version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4e8f88d2767a7c13193ede671f25733e32e4116d4c17778cf9af3beddba7881"
-dependencies = [
- "cc",
- "libc",
- "pkg-config",
 ]
 
 [[package]]
@@ -2462,7 +2435,6 @@ dependencies = [
  "base64 0.22.0",
  "chrono",
  "clap",
- "crossterm 0.27.0",
  "data-encoding",
  "dotenv",
  "futures-util",
@@ -2470,7 +2442,6 @@ dependencies = [
  "hmac",
  "inquire",
  "jsonwebtoken",
- "ncurses",
  "once_cell",
  "openssl",
  "password-hash",
