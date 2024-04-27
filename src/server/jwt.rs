@@ -13,8 +13,12 @@ pub async fn refresh_middleware(
     next: Next,
 ) -> Result<Response, AuthError> {
     let token_data = decode::<Claims>(auth.token(), &KEYS.decoding, &Validation::default())
-        .map_err(|_| AuthError::InvalidToken)
-        .expect("Couldnt decode token");
+        .map_err(|_| AuthError::InvalidToken);
+
+    let token_data = match token_data {
+        Ok(token) => token,
+        Err(e) => return Err(e),
+    };
 
     let mut response = next.run(request).await;
 

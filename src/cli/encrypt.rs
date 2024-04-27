@@ -1,22 +1,14 @@
 use crate::common::*;
 
-use axum::http::request;
-use axum_extra::headers::{Authorization, Header};
-use chrono::{Datelike, NaiveDateTime, TimeZone, Timelike};
-use clap::{arg, builder::OsStr, parser::ValueSource, Arg, ArgMatches, Command};
-use regex::Regex;
-use reqwest::{multipart::Part, Client};
-use serde_json::json;
-use std::io::prelude::*;
+use chrono::{NaiveDateTime, TimeZone};
+use clap::{parser::ValueSource, ArgMatches};
+use reqwest::Client;
 use std::{
-    error::Error,
     fs::{self, File},
-    io::{BufRead, BufReader, BufWriter, Write},
-    path::PathBuf,
-    process::exit,
+    io::Write,
 };
 
-pub async fn encrypt(sub_matches: &ArgMatches) {
+pub async fn encrypt(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
     let mut is_now = false;
     let f = sub_matches.get_one::<String>("FILE_NAME").unwrap().clone();
     let t = sub_matches.get_one::<String>("timestamp").unwrap();
@@ -75,7 +67,7 @@ pub async fn encrypt(sub_matches: &ArgMatches) {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
-        .expect("Could not crfeate Client");
+        .expect("Could not create Client");
 
     // And read the file we want to encrypt
     let file = fs::read(f.clone()).unwrap_or_else(|_| {
@@ -102,13 +94,16 @@ pub async fn encrypt(sub_matches: &ArgMatches) {
         false => "https://localhost:3000/api/later/encrypt",
     };
 
+    let token = format!("Bearer {}", read_from_config_file(xdg_dirs, "token".into()));
+
     // The response (the Authorization token should come from the config.ini probably)
     let response = client
         .post(api_route)
-        .header("Authorization", "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImZvbyIsImtleSI6ImQyQVFXRlNDY2ZkdTMxajJLamdycE1vNzhDLzVNSmVCdkZObUpsNUhvdzg9Iiwia2V5X3RpbWVzdGFtcCI6MTcxNDE3OTc3MCwiZXhwIjoxNzE0MTc5NzcwfQ.MQyiP7Tb7C4p5rRJ8IigTeSRHgPxiwJFIHwa4nM5IsI")
+        .header("Authorization", token)
         .multipart(part)
         .send()
-        .await.expect("error on reqwest");
+        .await
+        .expect("error on reqwest");
 
     // If the response is fine we create the zip and save whatever we get back from the response
     // into it. Otherwise something went wrong
@@ -123,12 +118,15 @@ pub async fn encrypt(sub_matches: &ArgMatches) {
             });
         success(
             format!(
-                "{} received. Inside there is your encrypted file and your HMAC!",
+                "{} received. Inside is your encrypted file and your HMAC!",
                 zip_filename
             )
             .as_str(),
         );
     } else {
-        error_out("Something went wrong.")
+        match response.json::<ErrorBody>().await {
+            Ok(json_err) => error_out(&json_err.error),
+            _ => error_out("Something went wrong."),
+        }
     }
 }

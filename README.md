@@ -44,7 +44,7 @@ curl -v -s -k \
 -F "cipher=1" \
 -F "hmac=1" \
 -X POST https://localhost:3000/api/now/encrypt \
--o file.enc
+-o file.zip
 ```
 
 openssl dgst -sha256 -hmac $(echo -n "key" | base64 -d) -binary Cargo.toml.enc | awk '{print $1}' | base64

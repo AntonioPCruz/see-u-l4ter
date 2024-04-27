@@ -1,4 +1,9 @@
-use axum::{extract::Request, http::HeaderValue, middleware::Next, response::Response};
+use axum::{
+    extract::Request,
+    http::HeaderValue,
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
 use axum_extra::{
     headers::{authorization::Bearer, Authorization, Header},
     TypedHeader,
@@ -14,8 +19,15 @@ pub async fn keygen_middleware(
     next: Next,
 ) -> Result<Response, AuthError> {
     let token_data = decode::<Claims>(auth.token(), &KEYS.decoding, &Validation::default())
-        .map_err(|_| AuthError::InvalidToken)
-        .expect("Couldnt decode token");
+        .map_err(|_| AuthError::InvalidToken);
+
+    let token_data = match token_data {
+        Ok(token) => token,
+        Err(e) => {
+            println!("Error while decoding token. Sending error message");
+            return Ok(e.into_response());
+        }
+    };
 
     let mut response = next.run(request).await;
 
