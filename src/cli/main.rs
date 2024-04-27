@@ -1,29 +1,22 @@
+mod common;
 use chrono::{Datelike, NaiveDateTime, TimeZone, Timelike};
 use clap::{arg, builder::OsStr, parser::ValueSource, Arg, Command};
+use encrypt::encrypt;
 use regex::Regex;
-use std::fs::File;
-use std::io::Write;
-use std::io::{BufRead, BufReader, BufWriter};
-use std::path::PathBuf;
-use std::process::exit;
-mod client;
-// mod cli::watch;
-const FORMAT_STR: &str = "%M:%H:%d-%m-%Y";
+use reqwest::Client;
+use serde_json::json;
+use std::{
+    fs::File,
+    io::{BufRead, BufReader, BufWriter, Write},
+    path::PathBuf,
+    process::exit,
+};
+mod encrypt;
+
 const EMAIL_REGEX_PATTERN: &str = r#"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"#;
 
 struct User {
     email: String,
-}
-
-pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
-    format!(
-        "{}:{:02}:{:02}:{:02}:{:02}",
-        d.year(),
-        d.month(),
-        d.day(),
-        d.hour(),
-        d.minute()
-    )
 }
 
 fn cli() -> Command {
@@ -31,10 +24,26 @@ fn cli() -> Command {
         .short_flag('e')
         .about("Encrypt something")
         .arg(arg!(<FILE_NAME> "The file you wish to encrypt"))
-        .arg(Arg::new("timestamp")
-            .help("Optional: MIN:HOUR:DAY-MONTH-YEAR. If this is not provided, it will be encrypted with the current time.")
-            .required(false)
-            .default_value(OsStr::from(str_of_date(chrono::Local::now())))
+        .arg(
+            Arg::new("cipher")
+                .short('c')
+                .help("Optional Integer: 1 -> AES-128-CBC, 2 -> AES-128-CTR.")
+                .required(false)
+                .default_value(OsStr::from("1")),
+        )
+        .arg(
+            Arg::new("hmac")
+                .short('m')
+                .help("Optional Integer: 1 -> HMAC-SHA256, 2 -> HMAC-SHA512.")
+                .required(false)
+                .default_value(OsStr::from("1")),
+        )
+        .arg(
+            Arg::new("timestamp")
+                .short('t')
+                .help("Optional Time   : YEAR-MONTH-DAY-HOUR:MIN. Default: Current Time")
+                .required(false)
+                .default_value(OsStr::from(common::str_of_date(chrono::Local::now()))),
         )
         .arg_required_else_help(true);
 
@@ -45,15 +54,13 @@ fn cli() -> Command {
         .arg(Arg::new("key")
             .help("Optional: SHA256/512 key. If this is not provided, the system will try to decrypt the file with a key generated with the current time.")
             .required(false)
-            .default_value(OsStr::from(str_of_date(chrono::Local::now())))
+            .default_value(OsStr::from(common::str_of_date(chrono::Local::now())))
         )
         .arg_required_else_help(true);
 
     Command::new("see-u-l4ter")
         .about("")
         .subcommand_required(true)
-        .subcommand(Command::new("server").about("Run the API web server"))
-        .subcommand(Command::new("client").about("Run some client, not sure yet!"))
         .subcommand(encrypt)
         .subcommand(decrypt)
         .subcommand(Command::new("watch").about("Accompany the key changes every 5 minutes."))
@@ -87,10 +94,7 @@ async fn main() {
     let xdg_dirs =
         xdg::BaseDirectories::with_prefix("see-u-l4ter").expect("Coudln't get xdg folder");
     let user = match xdg_dirs.find_config_file("config.ini") {
-        Some(config) => {
-            println!("{:?}", config);
-            extract_email(config)
-        }
+        Some(config) => extract_email(config),
         None => {
             let email_regex = Regex::new(EMAIL_REGEX_PATTERN).unwrap();
             let config_path = xdg_dirs
@@ -122,34 +126,9 @@ async fn main() {
     };
     let cmd = cli().get_matches();
     match cmd.subcommand() {
-        Some(("encrypt", sub_matches)) => {
-            let f = sub_matches.get_one::<String>("FILE_NAME").unwrap();
-            let t = sub_matches.get_one::<String>("timestamp").unwrap();
-            match sub_matches.value_source("timestamp") {
-                Some(ValueSource::DefaultValue) => println!("file: {}, timestamp = {}", f, t),
-                Some(ValueSource::CommandLine) => {
-                    let dt = chrono::Local::now();
-                    let offset = dt.offset();
-
-                    if let Ok(naive) = NaiveDateTime::parse_from_str(t, FORMAT_STR) {
-                        let t: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
-                            chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
-
-                        println!("file: {}, timestamp = {}", f, str_of_date(t.into()));
-                    } else {
-                        eprintln!(
-                        "ERROR: The date string is not in the correct format! Try MIN:HOUR:DAY-MONTH-YEAR"
-                    );
-                    }
-                }
-                _ => unreachable!(),
-            }
-        }
+        Some(("encrypt", sub_matches)) => encrypt(sub_matches).await,
         Some(("decrypt", _sub_matches)) => {
             println!("Hello from decrypt command! :)");
-        }
-        Some(("client", _sub_matches)) => {
-            client::client().await.unwrap();
         }
         _ => unreachable!(),
     }

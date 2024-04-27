@@ -141,8 +141,8 @@ async fn protected(claims: Claims) -> Result<String, AuthError> {
     1 -> AES-128-CBC
     2 -> AES-128-CTR
 
-    1 -> SHA256
-    2 -> SHA512
+    1 -> HMAC-SHA256
+    2 -> HMAC-SHA512
 */
 
 async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
@@ -187,7 +187,7 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     println!("Encrypting!\nKey length = {}", key.len());
     let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
 
-    let mut buf = [0; 65536];
+    let mut buf = [0; 100_000];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     let filename = String::from_utf8(form.get("filename").expect("No filename in form").to_vec())

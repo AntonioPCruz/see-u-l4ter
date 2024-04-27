@@ -2,6 +2,7 @@
 
 - [x] gerar chaves pseudo-aleatorias com uma cifra, dependentes do email, password, dia e hora (por exemplo SHA256) -> mostrar na pagina/cli
 - [ ] gerar chaves para uma determinada hora tambem dependentes do mesmo, para cifrar um ficheiro com essa chave -> gerar codigo HMAC-SHA256 ligado à chave
+- [ ] cifrar com essas chaves e devolver o ficheiro e o hmac do ficheiro ao utilizador
 - [ ] permitir tentar decifrar um criptograma com uma chave que o utilizador da. a essa chave adiciona-se o dia/hora atual -> o sistema verifica o codigo HMAC-SHA256 ligado a chave e avisa o utilizador se nao estiver certo
 
 # extra
@@ -44,4 +45,10 @@ curl -v -s -k \
 -F "hmac=1" \
 -X POST https://localhost:3000/api/now/encrypt \
 -o file.enc
+```
+
+## Building with Nix
+
+```bash
+nix build --impure
 ```
