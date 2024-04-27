@@ -16,10 +16,10 @@ use ring::{digest, hmac, pbkdf2, rand};
 use sha2::{Digest, Sha256, Sha512};
 use sqlx::Row;
 use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
-use xdg::BaseDirectories;
 use std::time::UNIX_EPOCH;
 use std::{net::SocketAddr, path::PathBuf};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use xdg::BaseDirectories;
 use zip::write::SimpleFileOptions;
 mod data;
 mod jwt;
@@ -60,7 +60,7 @@ impl HashAlgorithms {
                 mac.finalize().into_bytes().to_vec()
             }
         }
-    }    
+    }
 }
 
 static IV: &[u8; 16] = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03\x04\x05\x06\x07";
@@ -222,10 +222,12 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     println!("{}", BASE64_STANDARD.encode(&key));
 
     println!("Encrypting!\nKey length = {}", key.len());
-    let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
 
-    let mut hmac_result = hmac
-        .hash(&key, ciphertext.as_slice());
+    let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
+    let mut hmac_result = hmac.hash(&key, ciphertext.as_slice());
+
+    let metadata = format!("cipher = {}\nhmac = {}\n", c, h);
+    let hmac_metadata = hmac.hash(&key, metadata.as_bytes());
 
     let mut buf = [0; 100_000];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
@@ -243,6 +245,16 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     zip.start_file(filename_hmac, options)
         .expect("Couldnt create file inside zip");
     zip.write(hmac_result.as_slice())
+        .expect("Couldnt write to file inside zip");
+
+    zip.start_file("see-u-l4ter.options", options)
+        .expect("Couldnt create file inside zip");
+    zip.write(metadata.as_bytes())
+        .expect("Couldnt write to file inside zip");
+
+    zip.start_file("see-u-l4ter.options.hmac", options)
+        .expect("Couldnt create file inside zip");
+    zip.write(&hmac_metadata)
         .expect("Couldnt write to file inside zip");
 
     zip.finish().expect("Couldnt finish zip");
