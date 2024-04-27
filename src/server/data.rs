@@ -92,7 +92,7 @@ impl IntoResponse for AuthError {
             }
             AuthError::InvalidToken => (
                 StatusCode::BAD_REQUEST,
-                "Invalid token, please, log back in.",
+                "Invalid token, please, log back in or register.",
             ),
         };
         let body = Json(json!({

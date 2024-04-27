@@ -2,8 +2,10 @@ mod common;
 use clap::{arg, builder::OsStr, Arg, Command};
 use encrypt::encrypt;
 use login::login;
+use register::register;
 mod encrypt;
 mod login;
+mod register;
 
 fn cli() -> Command {
     let encrypt = Command::new("encrypt")
@@ -68,6 +70,7 @@ async fn main() {
         }
 
         Some(("login", _)) => login(xdg_dirs).await,
+        Some(("register", _)) => register(xdg_dirs).await,
         _ => unreachable!(),
     }
 }
