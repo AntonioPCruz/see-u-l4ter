@@ -13,9 +13,10 @@ use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
 use once_cell::sync::Lazy;
 use ring::{digest, hmac, pbkdf2, rand};
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, Sha512};
 use sqlx::Row;
 use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
+use xdg::BaseDirectories;
 use std::time::UNIX_EPOCH;
 use std::{net::SocketAddr, path::PathBuf};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -34,6 +35,33 @@ use futures_util::stream::StreamExt;
 use openssl::symm::{encrypt, Cipher};
 use std::collections::HashMap;
 use std::io::Write;
+
+use ::hmac::{Hmac, Mac};
+
+type HmacSha256 = Hmac<Sha256>;
+type HmacSha512 = Hmac<Sha512>;
+
+enum HashAlgorithms {
+    HmacSha256,
+    HmacSha512,
+}
+
+impl HashAlgorithms {
+    fn hash(&self, key: &[u8], data: &[u8]) -> Vec<u8> {
+        match self {
+            HashAlgorithms::HmacSha256 => {
+                let mut mac = HmacSha256::new_from_slice(key).unwrap();
+                mac.update(data);
+                mac.finalize().into_bytes().to_vec()
+            }
+            HashAlgorithms::HmacSha512 => {
+                let mut mac = HmacSha512::new_from_slice(key).unwrap();
+                mac.update(data);
+                mac.finalize().into_bytes().to_vec()
+            }
+        }
+    }    
+}
 
 static IV: &[u8; 16] = b"\x00\x01\x02\x03\x04\x05\x06\x07\x00\x01\x02\x03\x04\x05\x06\x07";
 
@@ -169,23 +197,35 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     let c = u8::from_ne_bytes([cipher_bytes[0]]) - '0' as u8;
     let h = u8::from_ne_bytes([hmac_bytes[0]]) - '0' as u8;
 
-    let (cipher, _hmac) = match (c, h) {
-        (1, 1) => (Cipher::aes_128_cbc(), hmac::HMAC_SHA256),
-        (1, 2) => (Cipher::aes_128_ecb(), hmac::HMAC_SHA512),
-        (2, 1) => (Cipher::aes_128_ctr(), hmac::HMAC_SHA256),
-        (2, 2) => (Cipher::aes_128_ctr(), hmac::HMAC_SHA512),
+    let key = &BASE64_STANDARD
+        .decode(claims.key)
+        .expect("Couldnt decode base64 key")[0..16];
+
+    let cipher = match c {
+        1 => Cipher::aes_128_cbc(),
+        2 => Cipher::aes_128_ctr(),
         _ => {
             println!("{}, {}", c, h);
             panic!()
         }
     };
 
-    let key = &BASE64_STANDARD
-        .decode(claims.key)
-        .expect("Couldnt decode base64 key")[0..16];
+    let hmac = match h {
+        1 => HashAlgorithms::HmacSha256, //HmacSha256
+        2 => HashAlgorithms::HmacSha512, //HmacSha512
+        _ => {
+            println!("{}, {}", c, h);
+            panic!()
+        }
+    };
+
+    println!("{}", BASE64_STANDARD.encode(&key));
 
     println!("Encrypting!\nKey length = {}", key.len());
     let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
+
+    let mut hmac_result = hmac
+        .hash(&key, ciphertext.as_slice());
 
     let mut buf = [0; 100_000];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
@@ -202,7 +242,7 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     let filename_hmac = format!("{}.hmac", filename.clone());
     zip.start_file(filename_hmac, options)
         .expect("Couldnt create file inside zip");
-    zip.write(hmac_bytes.as_slice())
+    zip.write(hmac_result.as_slice())
         .expect("Couldnt write to file inside zip");
 
     zip.finish().expect("Couldnt finish zip");

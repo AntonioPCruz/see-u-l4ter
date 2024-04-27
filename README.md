@@ -47,6 +47,8 @@ curl -v -s -k \
 -o file.enc
 ```
 
+openssl dgst -sha256 -hmac $(echo -n "key" | base64 -d) -binary Cargo.toml.enc | awk '{print $1}' | base64
+
 ## Building with Nix
 
 ```bash
