@@ -202,7 +202,7 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     let filename_hmac = format!("{}.hmac", filename.clone());
     zip.start_file(filename_hmac, options)
         .expect("Couldnt create file inside zip");
-    zip.write(b"hmac")
+    zip.write(hmac_bytes.as_slice())
         .expect("Couldnt write to file inside zip");
 
     zip.finish().expect("Couldnt finish zip");
