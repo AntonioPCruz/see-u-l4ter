@@ -30,6 +30,22 @@ pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
     )
 }
 
+pub fn ciphercode_to_string(c: u8) -> String {
+    match c {
+        1 => "AES-128-CBC".into(),
+        2 => "AES-128-CTR".into(),
+        _ => unreachable!(),
+    }
+}
+
+pub fn hmaccode_to_string(h: u8) -> String {
+    match h {
+        1 => "HMAC-SHA256".into(),
+        2 => "HMAC-SHA512".into(),
+        _ => unreachable!(),
+    }
+}
+
 impl Display for Claims {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let t_exp =

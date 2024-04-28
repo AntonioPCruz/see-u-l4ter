@@ -4,6 +4,7 @@ use axum_extra::{
     TypedHeader,
 };
 use jsonwebtoken::{decode, encode, Header as OtherHeader, TokenData, Validation};
+use log::{info, warn};
 
 use crate::{AuthError, Claims, KEYS};
 
@@ -17,15 +18,19 @@ pub async fn refresh_middleware(
 
     let token_data = match token_data {
         Ok(token) => token,
-        Err(e) => return Err(e),
+        Err(e) => {
+            warn!(target: "middleware_events", "Token received is invalid. Sending an error message.");
+            return Err(e);
+        }
     };
 
     let mut response = next.run(request).await;
 
     match token_is_valid(&token_data) {
         true => {
+            info!(target: "middleware_events", "Generating new token for user ({}) for 1 more minute of activity.", token_data.claims.email);
             let claims = Claims {
-                email: token_data.claims.email,
+                email: token_data.claims.email.clone(),
                 key: token_data.claims.key,
                 key_timestamp: token_data.claims.key_timestamp,
                 exp: token_data.claims.exp + 60,
@@ -39,6 +44,8 @@ pub async fn refresh_middleware(
                 Authorization::<Bearer>::name(),
                 HeaderValue::from_str(&token).expect("Couldnt create header value"),
             );
+
+            info!(target: "middleware_events", "New token for user ({}) generated. Sending now.", token_data.claims.email);
 
             Ok(response)
         }

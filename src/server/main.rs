@@ -7,6 +7,8 @@ use axum::{
     routing::{get, post},
     BoxError, Extension, Form, Json, Router,
 };
+use log::{debug, error, log_enabled, Level, LevelFilter};
+use log::{info, warn};
 
 use axum_server::tls_rustls::RustlsConfig;
 use dotenv::dotenv;
@@ -92,16 +94,25 @@ struct Ports {
 
 #[tokio::main]
 async fn main() {
-    dotenv().ok();
-    println!(".env read!");
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} {} {}] {}",
+                humantime::format_rfc3339_seconds(std::time::SystemTime::now()),
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Debug)
+        .chain(std::io::stdout())
+        .chain(fern::log_file("output.log").expect("Cant create log file"))
+        .apply()
+        .expect("Output err");
 
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "example_jwt=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    dotenv().ok();
+    info!(target: "server_events", "Server starting...");
+    info!(target: "server_events", ".env read!");
 
     let ports = Ports {
         http: 7878,
@@ -123,7 +134,7 @@ async fn main() {
     .await
     .expect("Couldnt read TLS certificates. Make sure you read the README.md inside certs/");
 
-    println!("TLS certificates read!");
+    info!("TLS certificates read!");
 
     let sqlpool: Pool<Sqlite> =
         SqlitePool::connect(&std::env::var("DATABASE_URL").expect("oopsies"))
@@ -149,10 +160,10 @@ async fn main() {
         .route("/register", post(register))
         .layer(Extension(sqlpool));
 
-    println!("TLS Server started!");
+    info!("Server started!");
     // run https server
     let addr = SocketAddr::from(([127, 0, 0, 1], ports.https));
-    tracing::debug!("listening on {}", addr);
+    info!("Listening on {}", addr);
     axum_server::bind_rustls(addr, config)
         .serve(app.into_make_service())
         .await
@@ -175,6 +186,8 @@ async fn protected(claims: Claims) -> Result<String, AuthError> {
 
 async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     use std::fs;
+
+    info!(target: "encrypting_events", "User ({}): Requested an encryption.", claims.email);
     let mut form = HashMap::new();
 
     while let Some(field) = mp.next_field().await.unwrap() {
@@ -182,7 +195,6 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
         let data = field.bytes().await.unwrap();
 
         form.insert(name.clone(), data.clone());
-        println!("Length of `{}` is {} bytes", name, data.len());
     }
 
     let file = form.clone().get("data").expect("No file (data)").to_vec();
@@ -193,6 +205,8 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
         .to_vec();
 
     let hmac_bytes = form.get("hmac").expect("Hmac not in form").to_vec();
+
+    info!(target: "encrypting_events", "User ({}): Form is okay.", claims.email);
 
     let c = u8::from_ne_bytes([cipher_bytes[0]]) - '0' as u8;
     let h = u8::from_ne_bytes([hmac_bytes[0]]) - '0' as u8;
@@ -219,15 +233,18 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
         }
     };
 
-    println!("{}", BASE64_STANDARD.encode(&key));
-
-    println!("Encrypting!\nKey length = {}", key.len());
+    info!(target: "encrypting_events", "User ({}): Key used = {}", claims.email, BASE64_STANDARD.encode(&key));
+    info!(target: "encrypting_events", "User ({}): Encryption starting", claims.email);
 
     let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
     let mut hmac_result = hmac.hash(&key, ciphertext.as_slice());
 
+    info!(target: "encrypting_events", "User ({}): Encryption complete with ciphermode {}, HMAC complete with hashing algorithm {}", claims.email, data::ciphercode_to_string(c), data::hmaccode_to_string(h));
+
     let metadata = format!("cipher = {}\nhmac = {}\n", c, h);
     let hmac_metadata = hmac.hash(&key, metadata.as_bytes());
+
+    info!(target: "encrypting_events", "User ({}): Metadata created and metadata HMAC complete. cipher = {}, hmac = {}", claims.email, c, h);
 
     let mut buf = [0; 100_000];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
@@ -241,24 +258,34 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     zip.write(ciphertext.as_slice())
         .expect("Couldnt write to file inside zip");
 
+    info!(target: "encrypting_events", "User ({}): Ciphertext stored inside zip", claims.email);
+
     let filename_hmac = format!("{}.hmac", filename.clone());
     zip.start_file(filename_hmac, options)
         .expect("Couldnt create file inside zip");
     zip.write(hmac_result.as_slice())
         .expect("Couldnt write to file inside zip");
 
+    info!(target: "encrypting_events", "User ({}): Ciphertext HMAC stored inside zip", claims.email);
+
     zip.start_file("see-u-l4ter.options", options)
         .expect("Couldnt create file inside zip");
     zip.write(metadata.as_bytes())
         .expect("Couldnt write to file inside zip");
+
+    info!(target: "encrypting_events", "User ({}): Metadata stored inside zip", claims.email);
 
     zip.start_file("see-u-l4ter.options.hmac", options)
         .expect("Couldnt create file inside zip");
     zip.write(&hmac_metadata)
         .expect("Couldnt write to file inside zip");
 
+    info!(target: "encrypting_events", "User ({}): Metadata HMAC stored inside zip", claims.email);
+
     zip.finish().expect("Couldnt finish zip");
     drop(zip);
+
+    info!(target: "encrypting_events", "User ({}): Zip finished. Sending now.", claims.email);
 
     let headers = [
         (header::CONTENT_TYPE, "application/zip; charset=utf-8"),
@@ -275,18 +302,24 @@ async fn login(
     Json(payload): Json<AuthPayload>,
 ) -> Result<Json<AuthBody>, AuthError> {
     // Check if the user sent the credentials
+
+    info!(target: "login_events", "User with email ({}) asked to sign in", payload.email);
     if payload.email.is_empty() || payload.client_secret.is_empty() {
+        warn!(target: "login_events", "User with email ({}) had missing credentials. Aborting.", payload.email);
         return Err(AuthError::MissingCredentials);
     }
 
     let user = sqlx::query("SELECT * FROM users WHERE ? = email")
-        .bind(payload.email)
+        .bind(payload.email.clone())
         .fetch_one(&pool)
         .await;
 
     let user = match user {
         Ok(u) => u,
-        Err(_) => return Err(AuthError::WrongCredentials),
+        Err(_) => {
+            warn!(target: "login_events", "User with email ({}) not found on the database. Aborting.", payload.email);
+            return Err(AuthError::WrongCredentials);
+        }
     };
 
     let p: String = user.get("password");
@@ -295,8 +328,11 @@ async fn login(
         .verify_password(&payload.client_secret.into_bytes(), &p_hash)
         .is_err()
     {
+        warn!(target: "login_events", "User with email ({}) inputed an incorrect password. Aborting.", payload.email);
         return Err(AuthError::WrongCredentials);
     }
+
+    info!(target: "login_events", "User with email ({}) found on the database and their password is correct.", payload.email);
 
     let now = std::time::SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -315,6 +351,8 @@ async fn login(
     let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)
         .map_err(|_| AuthError::TokenCreation)?;
 
+    info!(target: "login_events", "Claims and Access Token for user with email ({}) have been generated. Sending now.", payload.email);
+
     // Send the authorized token
     Ok(Json(AuthBody::new(token)))
 }
@@ -323,8 +361,10 @@ async fn register(
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<RegisterPayload>,
 ) -> Result<Json<AuthBody>, AuthError> {
+    info!(target: "register_events", "User with email ({}) asked to register", payload.email);
     // Check if the user sent the credentials
     if payload.email.is_empty() || payload.client_secret.is_empty() {
+        warn!(target: "login_events", "User with email ({}) had missing credentials. Aborting.", payload.email);
         return Err(AuthError::MissingCredentials);
     }
 
@@ -334,9 +374,14 @@ async fn register(
         .fetch_one(&pool)
         .await
     {
-        Ok(u) => return Err(AuthError::DuplicateAccount),
+        Ok(u) => {
+            warn!(target: "register_events", "Another user with email ({}) found on the database. Duplicate Account. Aborting.", payload.email);
+            return Err(AuthError::DuplicateAccount);
+        }
         Err(_) => {}
     };
+
+    info!(target: "register_events", "Registering user with email ({}): duplicate user not found on the database. Good to go.", payload.email);
 
     let _ = sqlx::query("INSERT INTO users (name, email, password, verified) VALUES (?, ?, ?, 1)")
         .bind(payload.name)
@@ -352,7 +397,7 @@ async fn register(
         .expect("Time went backwards")
         .as_secs();
     let mut claims = Claims {
-        email: payload.email,
+        email: payload.email.clone(),
         key: String::new(),
         key_timestamp: now + (60 * 5),
         exp: now as usize + (60 * 5), // 5 mins
@@ -363,6 +408,8 @@ async fn register(
     // Create the authorization token
     let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)
         .map_err(|_| AuthError::TokenCreation)?;
+
+    info!(target: "register_events", "Registering user with email ({}) complete. Database updated, claims and token generated. Sending now.", payload.email);
 
     // Send the authorized token
     Ok(Json(AuthBody::new(token)))
