@@ -19,6 +19,7 @@ use std::fmt::Display;
 
 use crate::KEYS;
 
+// general functions
 pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
     format!(
         "{}:{:02}:{:02}:{:02}:{:02}",
@@ -52,6 +53,97 @@ pub fn hmaccode_to_string(h: u8) -> String {
     }
 }
 
+// structs
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Claims {
+    pub email: String,
+    pub key: String,
+    pub key_timestamp: u64,
+    pub exp: usize,
+}
+
+pub struct Keys {
+    pub encoding: EncodingKey,
+    pub decoding: DecodingKey,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuthBody {
+    pub access_token: String,
+    pub token_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuthPayload {
+    pub email: String,
+    pub client_secret: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RegisterPayload {
+    pub name: String,
+    pub email: String,
+    pub client_secret: String,
+}
+
+#[derive(Debug)]
+pub enum AuthError {
+    WrongCredentials,
+    DuplicateAccount,
+    MissingCredentials,
+    TokenCreation,
+    InvalidToken,
+}
+
+#[derive(Debug)]
+pub enum ApiError {
+    InvalidFile,
+    InvalidTimestampFormat,
+    InvalidTimestampOver,
+}
+
+// impls
+
+impl Claims {
+    fn get_key(&mut self, email: &str, date: String, sub: bool) -> String {
+        let scrt = {
+            let mut tmp = email.to_string().trim().to_string();
+            tmp.push_str("tenho 4 bananas no frigorifico");
+            tmp.push_str(&date);
+            tmp
+        };
+        let mut hasher = Sha256::new();
+        hasher.update(scrt);
+
+        // read hash digest and consume hasher
+        let key = BASE64_STANDARD.encode(hasher.finalize());
+        if sub {
+            self.key = key.clone();
+        }
+        key
+    }
+
+    pub fn generate_key_from_now(&mut self, sub: bool) -> String {
+        let now = chrono::Local::now();
+        let clamped_now = clamp_to_5_minutes(now);
+        let res = str_of_date(clamped_now);
+        let email = self.email.clone();
+        self.get_key(&email, res, sub)
+    }
+
+    pub fn generate_key_from_date(
+        &mut self,
+        date: chrono::DateTime<chrono::Local>,
+        sub: bool,
+    ) -> String {
+        let clamped_now = clamp_to_5_minutes(date);
+        let res = str_of_date(clamped_now);
+        let email = self.email.clone();
+        self.get_key(&email, res, sub)
+    }
+}
+
 impl Display for Claims {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let t_exp =
@@ -67,15 +159,6 @@ impl Display for Claims {
             "Email: {}\nCurrent Key: {}\nKey Expiry: {}\nToken Expiry: {}",
             self.email, self.key, k_exp, t_exp
         )
-    }
-}
-
-impl AuthBody {
-    pub fn new(access_token: String) -> Self {
-        Self {
-            access_token,
-            token_type: "Bearer".to_string(),
-        }
     }
 }
 
@@ -97,6 +180,24 @@ where
             .map_err(|_| AuthError::InvalidToken)?;
 
         Ok(token_data.claims)
+    }
+}
+
+impl Keys {
+    pub fn new(secret: &[u8]) -> Self {
+        Self {
+            encoding: EncodingKey::from_secret(secret),
+            decoding: DecodingKey::from_secret(secret),
+        }
+    }
+}
+
+impl AuthBody {
+    pub fn new(access_token: String) -> Self {
+        Self {
+            access_token,
+            token_type: "Bearer".to_string(),
+        }
     }
 }
 
@@ -144,102 +245,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-pub struct Keys {
-    pub encoding: EncodingKey,
-    pub decoding: DecodingKey,
-}
-
-impl Keys {
-    pub fn new(secret: &[u8]) -> Self {
-        Self {
-            encoding: EncodingKey::from_secret(secret),
-            decoding: DecodingKey::from_secret(secret),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Claims {
-    pub email: String,
-    pub key: String,
-    pub key_timestamp: u64,
-    pub exp: usize,
-}
-
-impl Claims {
-    fn get_key(&mut self, email: &str, date: String, sub: bool) -> String {
-        let scrt = {
-            let mut tmp = email.to_string().trim().to_string();
-            tmp.push_str("tenho 4 bananas no frigorifico");
-            tmp.push_str(&date);
-            tmp
-        };
-        let mut hasher = Sha256::new();
-        hasher.update(scrt);
-
-        // read hash digest and consume hasher
-        let key = BASE64_STANDARD.encode(hasher.finalize());
-        if sub {
-            self.key = key.clone();
-        }
-        key
-    }
-
-    pub fn generate_key_from_now(&mut self, sub: bool) -> String {
-        let now = chrono::Local::now();
-        let clamped_now = clamp_to_5_minutes(now);
-        let res = str_of_date(clamped_now);
-        let email = self.email.clone();
-        self.get_key(&email, res, sub)
-    }
-
-    pub fn generate_key_from_date(
-        &mut self,
-        date: chrono::DateTime<chrono::Local>,
-        sub: bool,
-    ) -> String {
-        let clamped_now = clamp_to_5_minutes(date);
-        let res = str_of_date(clamped_now);
-        let email = self.email.clone();
-        self.get_key(&email, res, sub)
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct AuthBody {
-    pub access_token: String,
-    pub token_type: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AuthPayload {
-    pub email: String,
-    pub client_secret: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RegisterPayload {
-    pub name: String,
-    pub email: String,
-    pub client_secret: String,
-}
-
-#[derive(Debug)]
-pub enum AuthError {
-    WrongCredentials,
-    DuplicateAccount,
-    MissingCredentials,
-    TokenCreation,
-    InvalidToken,
-}
-
-#[derive(Debug)]
-pub enum ApiError {
-    InvalidFile,
-    InvalidTimestampFormat,
-    InvalidTimestampOver,
-}
-
+// unit tests
 #[cfg(test)]
 mod tests {
     use super::*;
