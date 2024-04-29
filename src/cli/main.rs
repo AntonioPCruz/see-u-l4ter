@@ -10,7 +10,7 @@ mod register;
 fn cli() -> Command {
     let encrypt = Command::new("encrypt")
         .short_flag('e')
-        .about("Encrypt something")
+        .about("Encrypt something.")
         .arg(arg!(<FILE_NAME> "The file you wish to encrypt"))
         .arg(
             Arg::new("cipher")
@@ -35,27 +35,61 @@ fn cli() -> Command {
         )
         .arg_required_else_help(true);
 
+    // Try to decrypt something using the current 5 minute interval timestamp or an old one,
+    // and an email provided by the user/user's email.
     let decrypt = Command::new("decrypt")
         .short_flag('d')
-        .about("Decrypt something")
+        .about("Decrypt something.")
         .arg(arg!(<FILE_NAME> "The file you wish to decrypt"))
-        .arg(Arg::new("key")
-            .help("Optional: SHA256/512 key. If this is not provided, the system will try to decrypt the file with a key generated with the current time.")
+        .arg(Arg::new("email")
+            .short('e')
+            .help("Optional String   : The email associated with the encrytion step. If this is not provided, your email will be used.")
             .required(false)
-            .default_value(OsStr::from(common::str_of_date(chrono::Local::now())))
+        )
+        .arg(
+            Arg::new("timestamp")
+                .short('t')
+                .help("Optional Past Time: YEAR-MONTH-DAY-HOUR:MIN. Default: Current Time")
+                .required(false)
+                .default_value(OsStr::from(common::str_of_date(chrono::Local::now()))),
         )
         .arg_required_else_help(true);
+
+    let old = Command::new("old")
+        .short_flag('o')
+        .about("Generate a key for a past timestamp.")
+        .arg(
+            Arg::new("timestamp")
+                .short('t')
+                .help("YEAR-MONTH-DAY-HOUR:MIN")
+                .required(true)
+                .default_value(OsStr::from(common::str_of_date(chrono::Local::now()))),
+        )
+        .arg(Arg::new("email")
+            .short('e')
+            .help("Optional String   : The email associated with the key. If this is not provided, your email will be used.")
+            .required(false)
+        )
+        .arg_required_else_help(true);
+
+    let watch = Command::new("watch")
+        .short_flag('w')
+        .about("Accompany the key changes every 5 minutes.")
+        .arg(Arg::new("email")
+            .short('e')
+            .help("Optional String   : The email associated with the key. If this is not provided, your email will be used.")
+            .required(false)
+        );
 
     Command::new("see-u-l4ter")
         .about("")
         .subcommand_required(true)
         .subcommand(encrypt)
         .subcommand(decrypt)
-        .subcommand(Command::new("watch").about("Accompany the key changes every 5 minutes."))
+        .subcommand(old)
+        .subcommand(watch)
         .subcommand(Command::new("login").about("Log into the server."))
         .subcommand(Command::new("register").about("Register an account."))
-        .subcommand(Command::new("gen").about("Generate a key for a given timestamp"))
-        .subcommand(Command::new("config").about("Configure your email and password"))
 }
 
 #[tokio::main]

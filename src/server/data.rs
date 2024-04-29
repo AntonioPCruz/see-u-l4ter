@@ -30,6 +30,12 @@ pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
     )
 }
 
+fn clamp_to_5_minutes(dt: chrono::DateTime<chrono::Local>) -> chrono::DateTime<chrono::Local> {
+    let minutes = dt.minute();
+    let clamped_minutes = (minutes / 5) * 5; // Round down to the nearest 5-minute interval
+    dt.with_minute(clamped_minutes).unwrap_or_else(|| dt)
+}
+
 pub fn ciphercode_to_string(c: u8) -> String {
     match c {
         1 => "AES-128-CBC".into(),
@@ -118,6 +124,26 @@ impl IntoResponse for AuthError {
     }
 }
 
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            ApiError::InvalidFile => (StatusCode::BAD_REQUEST, "Ivalid file."),
+            ApiError::InvalidTimestampFormat => (
+                StatusCode::BAD_REQUEST,
+                "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN",
+            ),
+            ApiError::InvalidTimestampOver => (
+                StatusCode::BAD_REQUEST,
+                "The date can't be after the current date!",
+            ),
+        };
+        let body = Json(json!({
+            "error": error_message,
+        }));
+        (status, body).into_response()
+    }
+}
+
 pub struct Keys {
     pub encoding: EncodingKey,
     pub decoding: DecodingKey,
@@ -141,11 +167,10 @@ pub struct Claims {
 }
 
 impl Claims {
-    fn get_key(&mut self, email: &str, password: &str, date: String) -> String {
+    fn get_key(&mut self, email: &str, date: String, sub: bool) -> String {
         let scrt = {
             let mut tmp = email.to_string().trim().to_string();
             tmp.push_str("tenho 4 bananas no frigorifico");
-            tmp.push_str(password.trim());
             tmp.push_str(&date);
             tmp
         };
@@ -154,25 +179,29 @@ impl Claims {
 
         // read hash digest and consume hasher
         let key = BASE64_STANDARD.encode(hasher.finalize());
-        self.key = key.clone();
+        if sub {
+            self.key = key.clone();
+        }
         key
     }
 
-    pub fn generate_key_from_now(&mut self, password: &str) -> String {
-        let now = chrono::offset::Local::now();
-        let res = str_of_date(now);
+    pub fn generate_key_from_now(&mut self, sub: bool) -> String {
+        let now = chrono::Local::now();
+        let clamped_now = clamp_to_5_minutes(now);
+        let res = str_of_date(clamped_now);
         let email = self.email.clone();
-        self.get_key(&email, password, res)
+        self.get_key(&email, res, sub)
     }
 
     pub fn generate_key_from_date(
         &mut self,
-        password: &str,
         date: chrono::DateTime<chrono::Local>,
+        sub: bool,
     ) -> String {
-        let res = str_of_date(date);
+        let clamped_now = clamp_to_5_minutes(date);
+        let res = str_of_date(clamped_now);
         let email = self.email.clone();
-        self.get_key(&email, password, res)
+        self.get_key(&email, res, sub)
     }
 }
 
@@ -207,4 +236,81 @@ pub enum AuthError {
 #[derive(Debug)]
 pub enum ApiError {
     InvalidFile,
+    InvalidTimestampFormat,
+    InvalidTimestampOver,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+
+    #[test]
+    fn test_clamp_to_5_minutes() {
+        // Test a time where minutes are not at a multiple of 5
+        let dt1 = chrono::Local
+            .with_ymd_and_hms(2024, 12, 3, 14, 37, 0)
+            .unwrap();
+        assert_eq!(
+            clamp_to_5_minutes(dt1),
+            chrono::Local
+                .with_ymd_and_hms(2024, 12, 3, 14, 35, 0)
+                .unwrap()
+        );
+
+        // Test a time where minutes are at a multiple of 5
+        let dt2 = chrono::Local
+            .with_ymd_and_hms(2024, 12, 3, 14, 30, 0)
+            .unwrap();
+        assert_eq!(
+            clamp_to_5_minutes(dt2),
+            chrono::Local
+                .with_ymd_and_hms(2024, 12, 3, 14, 30, 0)
+                .unwrap()
+        );
+
+        // Test a time where minutes are exactly at 0
+        let dt3 = chrono::Local
+            .with_ymd_and_hms(2024, 12, 3, 17, 45, 0)
+            .unwrap();
+        assert_eq!(
+            clamp_to_5_minutes(dt3),
+            chrono::Local
+                .with_ymd_and_hms(2024, 12, 3, 17, 45, 0)
+                .unwrap()
+        );
+
+        // Test a time where minutes are exactly at 55
+        let dt4 = chrono::Local
+            .with_ymd_and_hms(2024, 12, 3, 17, 55, 0)
+            .unwrap();
+        assert_eq!(
+            clamp_to_5_minutes(dt4),
+            chrono::Local
+                .with_ymd_and_hms(2024, 12, 3, 17, 55, 0)
+                .unwrap()
+        );
+
+        // Test a time where minutes are at 59
+        let dt5 = chrono::Local
+            .with_ymd_and_hms(2024, 12, 3, 17, 59, 0)
+            .unwrap();
+        assert_eq!(
+            clamp_to_5_minutes(dt5),
+            chrono::Local
+                .with_ymd_and_hms(2024, 12, 3, 17, 55, 0)
+                .unwrap()
+        );
+
+        // Test a time where minutes are at 1
+        let dt5 = chrono::Local
+            .with_ymd_and_hms(2024, 12, 3, 17, 1, 0)
+            .unwrap();
+        assert_eq!(
+            clamp_to_5_minutes(dt5),
+            chrono::Local
+                .with_ymd_and_hms(2024, 12, 3, 17, 0, 0)
+                .unwrap()
+        );
+    }
 }

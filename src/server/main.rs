@@ -15,6 +15,7 @@ use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
 use once_cell::sync::Lazy;
 use ring::{digest, hmac, pbkdf2, rand};
+use serde_json::json;
 use sha2::{Digest, Sha256, Sha512};
 use sqlx::Row;
 use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
@@ -33,12 +34,15 @@ use argon2::{
 
 use crate::data::*;
 use base64::prelude::*;
+use chrono::{NaiveDate, TimeZone};
 use futures_util::stream::StreamExt;
 use openssl::symm::{encrypt, Cipher};
 use std::collections::HashMap;
 use std::io::Write;
 
 use ::hmac::{Hmac, Mac};
+
+pub const FORMAT_STR: &str = "%Y-%m-%d-%H:%M";
 
 type HmacSha256 = Hmac<Sha256>;
 type HmacSha512 = Hmac<Sha512>;
@@ -152,8 +156,9 @@ async fn main() {
     let app = Router::new()
         .route("/protected", get(protected))
         .route("/api/now/encrypt", post(encrypt_now))
-        // .route("/api/later/encrypt", post(encrypt_later))
-        // .route("/api/now/decrypt", post(decrypt))
+        .route("/api/now/decrypt", post(decrypt))
+        .route("/api/later/encrypt", post(encrypt_later))
+        .route("/api/old/gen", post(old_gen))
         .layer(axum::middleware::from_fn(jwt::refresh_middleware))
         .layer(axum::middleware::from_fn(keygen::keygen_middleware))
         .route("/login", post(login))
@@ -184,7 +189,7 @@ async fn protected(claims: Claims) -> Result<String, AuthError> {
     2 -> HMAC-SHA512
 */
 
-async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
+async fn encrypt_aux(claims: Claims, mut mp: Multipart, key: &[u8]) -> Response {
     use std::fs;
 
     info!(target: "encrypting_events", "User ({}): Requested an encryption.", claims.email);
@@ -210,10 +215,6 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
 
     let c = u8::from_ne_bytes([cipher_bytes[0]]) - '0' as u8;
     let h = u8::from_ne_bytes([hmac_bytes[0]]) - '0' as u8;
-
-    let key = &BASE64_STANDARD
-        .decode(claims.key)
-        .expect("Couldnt decode base64 key")[0..16];
 
     let cipher = match c {
         1 => Cipher::aes_128_cbc(),
@@ -297,6 +298,63 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     (headers, buf).into_response()
 }
 
+async fn encrypt_now(claims: Claims, mp: Multipart) -> Response {
+    let key = &BASE64_STANDARD
+        .decode(&claims.key)
+        .expect("Couldnt decode base64 key")[0..16];
+    encrypt_aux(claims, mp, key).await
+}
+
+async fn encrypt_later(claims: Claims, mp: Multipart) -> Response {
+    let key = unimplemented!();
+    encrypt_aux(claims, mp, key).await
+}
+
+async fn decrypt(claims: Claims, mut mp: Multipart) -> Response {
+    unimplemented!()
+}
+
+async fn old_gen(mut claims: Claims, mut mp: Multipart) -> Response {
+    info!(target: "old_gen_events", "User ({}): Requested a key from old timestamp.", claims.email);
+    let mut form = HashMap::new();
+
+    while let Some(field) = mp.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+        let data = field.bytes().await.unwrap();
+
+        form.insert(name.clone(), data.clone());
+    }
+
+    let dt = form.clone().get("date").expect("No date").to_vec();
+    let t = String::from_utf8(dt).expect("Invalid date");
+
+    let now = chrono::Local::now();
+    let offset = now.offset();
+
+    let date = if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
+        let temp: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
+            chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
+        if temp > now {
+            info!(target: "old_gen_events", "User ({}): Date received is in after now timestamp.", claims.email);
+            return ApiError::InvalidTimestampOver.into_response();
+        }
+
+        temp
+    } else {
+        info!(target: "old_gen_events", "User ({}): Date received is in an invalid format.", claims.email);
+        return ApiError::InvalidTimestampFormat.into_response();
+    };
+
+    let key = claims.generate_key_from_date(date.into(), false);
+
+    info!(target: "old_gen_events", "User ({}): Date received is in valid format. Key generated. Sending...", claims.email);
+
+    let body = Json(json!({
+    "key" : key
+    }));
+    (StatusCode::OK, body).into_response()
+}
+
 async fn login(
     Extension(pool): Extension<SqlitePool>,
     Json(payload): Json<AuthPayload>,
@@ -345,7 +403,7 @@ async fn login(
         exp: now as usize + (60 * 5), // 5 mins
     };
 
-    claims.generate_key_from_now("testing");
+    claims.generate_key_from_now(true);
 
     // Create the authorization token
     let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)
@@ -403,7 +461,7 @@ async fn register(
         exp: now as usize + (60 * 5), // 5 mins
     };
 
-    claims.generate_key_from_now("testing");
+    claims.generate_key_from_now(true);
 
     // Create the authorization token
     let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)

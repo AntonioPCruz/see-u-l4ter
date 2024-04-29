@@ -43,7 +43,7 @@ pub async fn keygen_middleware(
                 exp: token_data.claims.exp,
             };
 
-            claims.generate_key_from_now("testing");
+            claims.generate_key_from_now(true);
 
             let token = encode(&OtherHeader::default(), &claims, &KEYS.encoding)
                 .map_err(|_| AuthError::TokenCreation)
