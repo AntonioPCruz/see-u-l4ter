@@ -159,6 +159,7 @@ async fn main() {
         .route("/api/now/decrypt", post(decrypt))
         .route("/api/later/encrypt", post(encrypt_later))
         .route("/api/old/gen", post(old_gen))
+        .route("/api/now/gen", post(gen))
         .layer(axum::middleware::from_fn(jwt::refresh_middleware))
         .layer(axum::middleware::from_fn(keygen::keygen_middleware))
         .route("/login", post(login))
@@ -314,6 +315,19 @@ async fn decrypt(claims: Claims, mut mp: Multipart) -> Response {
     unimplemented!()
 }
 
+async fn gen(mut claims: Claims) -> Response {
+    info!(target: "gen_events", "User ({}): Requested a key from now timestamp.", claims.email);
+
+    let key = claims.generate_key_from_now(false);
+
+    info!(target: "gen_events", "User ({}): Key generated. Sending...", claims.email);
+
+    let body = Json(json!({
+    "key" : key
+    }));
+    (StatusCode::OK, body).into_response()
+}
+
 async fn old_gen(mut claims: Claims, mut mp: Multipart) -> Response {
     info!(target: "old_gen_events", "User ({}): Requested a key from old timestamp.", claims.email);
     let mut form = HashMap::new();
@@ -325,8 +339,9 @@ async fn old_gen(mut claims: Claims, mut mp: Multipart) -> Response {
         form.insert(name.clone(), data.clone());
     }
 
-    let dt = form.clone().get("date").expect("No date").to_vec();
-    let t = String::from_utf8(dt).expect("Invalid date");
+    let dt = form.clone().get("timestamp").expect("No timestamp").to_vec();
+    let t = String::from_utf8(dt).expect("Invalid timestamp");
+    println!("t: {}", t);
 
     let now = chrono::Local::now();
     let offset = now.offset();
@@ -334,6 +349,7 @@ async fn old_gen(mut claims: Claims, mut mp: Multipart) -> Response {
     let date = if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
         let temp: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
             chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
+            print!("temp {:?} now {:?}", temp, now);
         if temp > now {
             info!(target: "old_gen_events", "User ({}): Date received is in after now timestamp.", claims.email);
             return ApiError::InvalidTimestampOver.into_response();

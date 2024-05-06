@@ -4,6 +4,8 @@ use encrypt::encrypt;
 use login::login;
 use register::register;
 mod encrypt;
+mod old;
+mod watch;
 mod login;
 mod register;
 
@@ -102,6 +104,8 @@ async fn main() {
         Some(("decrypt", _sub_matches)) => {
             println!("Hello from decrypt command! :)");
         }
+        Some(("old", sub_matches)) => old::old(xdg_dirs, sub_matches).await,
+        Some(("watch", _)) => watch::watch(xdg_dirs, "ola").await,
 
         Some(("login", _)) => login(xdg_dirs).await,
         Some(("register", _)) => register(xdg_dirs).await,

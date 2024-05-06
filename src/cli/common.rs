@@ -18,7 +18,7 @@ pub fn success(s: &str) {
 
 pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
     format!(
-        "{}:{:02}:{:02}:{:02}:{:02}",
+        "{}-{:02}-{:02}-{:02}:{:02}",
         d.year(),
         d.month(),
         d.day(),
@@ -67,6 +67,7 @@ pub fn write_to_config_file(xdg_dirs: xdg::BaseDirectories, left: String, right:
                 .place_config_file("config.ini")
                 .expect("Couldn't place config file in xdg folder");
 
+            let _ = std::fs::File::create(&config_path).expect("Couldn't create file");
             write_it(config_path, left, right)
         }
     };
@@ -119,4 +120,9 @@ pub struct ErrorBody {
 pub struct AuthBody {
     pub access_token: String,
     pub token_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KeyBody {
+    pub key: String,
 }
