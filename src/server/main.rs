@@ -1,25 +1,25 @@
 use axum::{
-    body::Body,
-    extract::{Host, Multipart, Request, State},
+    extract::{Host, Multipart},
     handler::HandlerWithoutStateExt,
     http::{header, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
-    BoxError, Extension, Form, Json, Router,
+    BoxError, Extension, Json,
 };
-use log::{debug, error, log_enabled, Level, LevelFilter};
+use axum::Router;
+use hmac::Mac;
 use log::{info, warn};
 
 use axum_server::tls_rustls::RustlsConfig;
 use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
 use once_cell::sync::Lazy;
-use ring::{digest, hmac, pbkdf2, rand};
+use ring::digest::digest;
 use serde_json::json;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Sha256, Sha512};
 use sqlx::Row;
 use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
-use std::time::UNIX_EPOCH;
+use std::{io::Read, time::UNIX_EPOCH};
 use std::{net::SocketAddr, path::PathBuf};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use xdg::BaseDirectories;
@@ -34,18 +34,18 @@ use argon2::{
 
 use crate::data::*;
 use base64::prelude::*;
-use chrono::{NaiveDate, TimeZone};
+use chrono::{TimeZone};
 use futures_util::stream::StreamExt;
-use openssl::symm::{encrypt, Cipher};
+use openssl::{symm::{decrypt, encrypt, Cipher}};
 use std::collections::HashMap;
 use std::io::Write;
 
-use ::hmac::{Hmac, Mac};
+use ::hmac::{digest::MacError, Hmac};
 
 pub const FORMAT_STR: &str = "%Y-%m-%d-%H:%M";
 
-type HmacSha256 = Hmac<Sha256>;
-type HmacSha512 = Hmac<Sha512>;
+type THmacSha256 = Hmac<Sha256>;
+type THmacSha512 = Hmac<Sha512>;
 
 enum HashAlgorithms {
     HmacSha256,
@@ -53,15 +53,27 @@ enum HashAlgorithms {
 }
 
 impl HashAlgorithms {
+    fn verify(&self, key: &[u8], d1: &[u8], d2: &[u8]) -> Result<(), MacError> {
+        match self {
+            HashAlgorithms::HmacSha256 => {
+                let n = THmacSha256::new_from_slice(key).expect("Expected a valid hmac");
+                n.update(d1).verify(d2.into())
+            }
+            HashAlgorithms::HmacSha512 => {
+                let n = THmacSha512::new_from_slice(key).expect("Expected a valid hmac");
+                n.update(d1).verify(d2.into())
+            }
+        }
+    }
     fn hash(&self, key: &[u8], data: &[u8]) -> Vec<u8> {
         match self {
             HashAlgorithms::HmacSha256 => {
-                let mut mac = HmacSha256::new_from_slice(key).unwrap();
+                let mut mac = THmacSha256::new_from_slice(key).unwrap();
                 mac.update(data);
                 mac.finalize().into_bytes().to_vec()
             }
             HashAlgorithms::HmacSha512 => {
-                let mut mac = HmacSha512::new_from_slice(key).unwrap();
+                let mut mac = THmacSha512::new_from_slice(key).unwrap();
                 mac.update(data);
                 mac.finalize().into_bytes().to_vec()
             }
@@ -156,7 +168,7 @@ async fn main() {
     let app = Router::new()
         .route("/protected", get(protected))
         .route("/api/now/encrypt", post(encrypt_now))
-        .route("/api/now/decrypt", post(decrypt))
+        .route("/api/now/decrypt", post(decrypt_now))
         .route("/api/later/encrypt", post(encrypt_later))
         .route("/api/old/gen", post(old_gen))
         .route("/api/now/gen", post(gen))
@@ -378,8 +390,105 @@ async fn encrypt_later(mut claims: Claims, mut mp: Multipart) -> Response {
     .await
 }
 
-async fn decrypt(claims: Claims, mut mp: Multipart) -> Response {
-    unimplemented!()
+async fn decrypt_aux(claims: Claims, mut mp: Multipart, key: &[u8]) -> Response {
+    info!(target: "decrypting_events", "User ({}): Requested an decryption.", claims.email);
+    let mut form = HashMap::new();
+
+    while let Some(field) = mp.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+        let data = field.bytes().await.unwrap();
+
+        form.insert(name.clone(), data.clone());
+    }
+
+    let file = form.clone().get("data").expect("No file (data)").to_vec();
+    let sha256=BASE64_STANDARD.encode(digest(&ring::digest::SHA256, &file).as_ref());
+    let f = std::fs::File::create_new(format!("/tmp/{}.zip", sha256)).expect("");
+    let mut zip = zip::read::ZipArchive::new(f).expect("Expected a zip file");
+    assert_eq!(4, zip.len());
+    let mut htbl = HashMap::new();
+    let mut vec_files = Vec::new();
+    for i in 0..zip.len() {
+        let mut option = zip.by_index(i).expect("A file, lol");
+        let mut options_buf = vec![0; option.size() as usize];
+        option.read(&mut options_buf).expect("");
+        if option.name() != "see-u-l4ter.options" || option.name() != "see-u-l4ter.hmac"{
+            vec_files.push(option.name().to_owned());
+        }
+        htbl.insert(option.name().to_owned(), options_buf);
+    }
+
+    let op = htbl.get("see-u-l4ter.options").unwrap();
+    let op_hmac = htbl.get("see-u-l4ter.hmac").unwrap();
+    HashAlgorithms::HmacSha256.verify(&key[16..32], &op, &op_hmac).expect("Option file was modified");
+
+    let options = String::from_utf8(op.to_vec()).unwrap();
+    let mut l = options.split_whitespace();
+    let cipher_num = l.nth(2).expect("Cipher is not valid");
+    let hmac_num = l.nth(5).expect("Hmac is not valid");
+    let cipher_num = cipher_num.parse::<i32>().expect("Could not convert to int");
+    let hmac_num = hmac_num.parse::<i32>().expect("Could not convert to int");
+    let cipher = match cipher_num {
+        1 => Cipher::aes_128_cbc(),
+        2 => Cipher::aes_128_ctr(),
+        _ => {
+            println!("{}, {}", cipher_num, hmac_num);
+            panic!()
+        }
+    };
+
+    let hmac = match hmac_num {
+        1 => HashAlgorithms::HmacSha256, //HmacSha256
+        2 => HashAlgorithms::HmacSha512, //HmacSha512
+        _ => {
+            println!("{}, {}", cipher_num, hmac_num);
+            panic!()
+        }
+    };
+
+    let filename = vec_files[0].trim_end_matches(".enc").trim_end_matches(".hmac").to_string();
+    let file_buf = htbl.get(&format!("{}.enc", filename)).unwrap();
+    let hmac_buf = htbl.get(&format!("{}.hmac", filename)).unwrap();
+
+    hmac.verify(&key[16..32],&file_buf, &hmac_buf).unwrap();
+
+    let plaintext = decrypt(cipher, &key[0..16], Some(IV), file.as_slice()).unwrap();
+
+    let mut buf = [0; 100_000];
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    let filename = String::from_utf8(form.get("filename").expect("No filename in form").to_vec())
+        .expect("Error creating string from UTF-8 bytes");
+
+    let filename_enc = format!("{}.txt", filename.clone());
+    zip.start_file(filename_enc, options)
+        .expect("Couldnt create file inside zip");
+    zip.write(plaintext.as_slice())
+        .expect("Couldnt write to file inside zip");
+
+    info!(target: "decrypting_events", "User ({}): Ciphertext stored inside zip", claims.email);
+
+    zip.finish().expect("Couldnt finish zip");
+    drop(zip);
+
+    info!(target: "decrypting_events", "User ({}): Zip finished. Sending now.", claims.email);
+
+    let headers = [
+        (header::CONTENT_TYPE, "application/zip; charset=utf-8"),
+        (
+            header::CONTENT_DISPOSITION,
+            &format!("attachment; filename=\"{}.zip\"", filename),
+        ),
+    ];
+    (headers, buf).into_response()
+}
+
+
+async fn decrypt_now(claims: Claims, mp: Multipart) -> Response {
+    let key = &BASE64_STANDARD
+        .decode(&claims.key)
+        .expect("Couldnt decode base64 key")[0..16];
+    decrypt_aux(claims, mp, key).await
 }
 
 async fn gen(mut claims: Claims) -> Response {
