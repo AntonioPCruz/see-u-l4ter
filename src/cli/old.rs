@@ -4,7 +4,6 @@ use clap::{parser::ValueSource, ArgMatches};
 use chrono::{NaiveDateTime, TimeZone};
 
 use reqwest::Client;
-use std::time::{Duration, Instant};
 
 pub async fn old(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
     let t = sub_matches.get_one::<String>("timestamp").unwrap();

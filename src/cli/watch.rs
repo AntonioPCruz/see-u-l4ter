@@ -1,15 +1,15 @@
 use crate::common::{error_out, read_from_config_file, KeyBody, ErrorBody, FORMAT_STR};
 
 use reqwest::Client;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-pub async fn watch(xdg_dirs: xdg::BaseDirectories, email: &str) {
+pub async fn watch(xdg_dirs: xdg::BaseDirectories, _email: &str) {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
         .expect("Could not create Client");
     
-    let mut interval = tokio::time::interval(Duration::from_secs(280)); // 5 minutes -1 second
+    let mut interval = tokio::time::interval(Duration::from_secs(280)); // 5 minutes - 20 seconds
     interval.tick().await;
 
     loop {

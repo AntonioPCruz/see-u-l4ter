@@ -42,7 +42,6 @@ pub fn str_of_date_local(d: chrono::DateTime<chrono::Local>) -> String {
 
 pub fn str_to_utc_string(t: String) -> String {
     let dt = chrono::Utc::now().with_second(0).expect("Couldt change second").with_nanosecond(0).expect("Couldnt change nano");
-    let offset = dt.offset();
 
     println!("{}", dt);
 
@@ -56,31 +55,13 @@ pub fn str_to_utc_string(t: String) -> String {
             error_out("The date can't be less than the time right now!")
         }
 
-        (str_of_date(t))
+        str_of_date(t)
     } else {
         error_out(
             "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN",
         );
         unreachable!()
     }
-
-//     let now = chrono::Local::now();
-//     let offset = now.offset();
-//
-//     let date = if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
-//         let temp: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
-//             chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
-//         if temp < now {
-//             error_out("The date can't be less than the time right now!")
-//         }
-//
-//         temp
-//     } else {
-//         error_out(
-//             "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN",
-//         );
-//         unreachable!()
-//     };
 }
 
 pub fn write_to_config_file(xdg_dirs: xdg::BaseDirectories, left: String, right: String) {
