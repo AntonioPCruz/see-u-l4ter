@@ -101,6 +101,7 @@ pub enum ApiError {
     InvalidFile,
     InvalidTimestampFormat,
     InvalidTimestampOver,
+    InvalidTimestampUnder,
 }
 
 // impls
@@ -236,6 +237,10 @@ impl IntoResponse for ApiError {
             ApiError::InvalidTimestampOver => (
                 StatusCode::BAD_REQUEST,
                 "The date can't be after the current date!",
+            ),
+            ApiError::InvalidTimestampUnder => (
+                StatusCode::BAD_REQUEST,
+                "The date can't be before the current date!",
             ),
         };
         let body = Json(json!({

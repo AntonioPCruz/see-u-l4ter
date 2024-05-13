@@ -190,29 +190,15 @@ async fn protected(claims: Claims) -> Result<String, AuthError> {
     2 -> HMAC-SHA512
 */
 
-async fn encrypt_aux(claims: Claims, mut mp: Multipart, key: &[u8]) -> Response {
+async fn encrypt_aux(
+    claims: Claims,
+    file: Vec<u8>,
+    cipher_bytes: Vec<u8>,
+    hmac_bytes: Vec<u8>,
+    filename: String,
+    key: &[u8],
+) -> Response {
     use std::fs;
-
-    info!(target: "encrypting_events", "User ({}): Requested an encryption.", claims.email);
-    let mut form = HashMap::new();
-
-    while let Some(field) = mp.next_field().await.unwrap() {
-        let name = field.name().unwrap().to_string();
-        let data = field.bytes().await.unwrap();
-
-        form.insert(name.clone(), data.clone());
-    }
-
-    let file = form.clone().get("data").expect("No file (data)").to_vec();
-    let cipher_bytes = form
-        .clone()
-        .get("cipher")
-        .expect("Cipher not in form")
-        .to_vec();
-
-    let hmac_bytes = form.get("hmac").expect("Hmac not in form").to_vec();
-
-    info!(target: "encrypting_events", "User ({}): Form is okay.", claims.email);
 
     let c = u8::from_ne_bytes([cipher_bytes[0]]) - '0' as u8;
     let h = u8::from_ne_bytes([hmac_bytes[0]]) - '0' as u8;
@@ -235,24 +221,23 @@ async fn encrypt_aux(claims: Claims, mut mp: Multipart, key: &[u8]) -> Response 
         }
     };
 
-    info!(target: "encrypting_events", "User ({}): Key used = {}", claims.email, BASE64_STANDARD.encode(&key));
+    info!(target: "encrypting_events", "User ({}): Key used for cipher = {}", claims.email, BASE64_STANDARD.encode(&key[0..16]));
+    info!(target: "encrypting_events", "User ({}): Key used for hmacs = {}", claims.email, BASE64_STANDARD.encode(&key[16..32]));
     info!(target: "encrypting_events", "User ({}): Encryption starting", claims.email);
 
-    let ciphertext = encrypt(cipher, &key, Some(IV), file.as_slice()).unwrap();
-    let mut hmac_result = hmac.hash(&key, ciphertext.as_slice());
+    let ciphertext = encrypt(cipher, &key[0..16], Some(IV), file.as_slice()).unwrap();
+    let mut hmac_result = hmac.hash(&key[16..32], ciphertext.as_slice());
 
     info!(target: "encrypting_events", "User ({}): Encryption complete with ciphermode {}, HMAC complete with hashing algorithm {}", claims.email, data::ciphercode_to_string(c), data::hmaccode_to_string(h));
 
     let metadata = format!("cipher = {}\nhmac = {}\n", c, h);
-    let hmac_metadata = hmac.hash(&key, metadata.as_bytes());
+    let hmac_metadata = hmac.hash(&key[16..32], metadata.as_bytes());
 
     info!(target: "encrypting_events", "User ({}): Metadata created and metadata HMAC complete. cipher = {}, hmac = {}", claims.email, c, h);
 
     let mut buf = [0; 100_000];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    let filename = String::from_utf8(form.get("filename").expect("No filename in form").to_vec())
-        .expect("Error creating string from UTF-8 bytes");
 
     let filename_enc = format!("{}.enc", filename.clone());
     zip.start_file(filename_enc, options)
@@ -299,16 +284,98 @@ async fn encrypt_aux(claims: Claims, mut mp: Multipart, key: &[u8]) -> Response 
     (headers, buf).into_response()
 }
 
-async fn encrypt_now(claims: Claims, mp: Multipart) -> Response {
+async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
+    info!(target: "encrypting_events", "User ({}): Requested an encryption.", claims.email);
+    let mut form = HashMap::new();
+
+    while let Some(field) = mp.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+        let data = field.bytes().await.unwrap();
+
+        form.insert(name.clone(), data.clone());
+    }
+
+    let file = form.clone().get("data").expect("No file (data)").to_vec();
+    let cipher_bytes = form
+        .clone()
+        .get("cipher")
+        .expect("Cipher not in form")
+        .to_vec();
+
+    let hmac_bytes = form.get("hmac").expect("Hmac not in form").to_vec();
+
+    let filename = String::from_utf8(form.get("filename").expect("No filename in form").to_vec())
+        .expect("Error creating string from UTF-8 bytes");
+
+    info!(target: "encrypting_events", "User ({}): Form is okay.", claims.email);
+
     let key = &BASE64_STANDARD
         .decode(&claims.key)
-        .expect("Couldnt decode base64 key")[0..16];
-    encrypt_aux(claims, mp, key).await
+        .expect("Couldnt decode base64 key");
+
+    encrypt_aux(claims, file, cipher_bytes, hmac_bytes, filename, key).await
 }
 
-async fn encrypt_later(claims: Claims, mp: Multipart) -> Response {
-    let key = unimplemented!();
-    encrypt_aux(claims, mp, key).await
+async fn encrypt_later(mut claims: Claims, mut mp: Multipart) -> Response {
+    info!(target: "encrypting_events", "User ({}): Requested an encryption for later.", claims.email);
+    let mut form = HashMap::new();
+
+    while let Some(field) = mp.next_field().await.unwrap() {
+        let name = field.name().unwrap().to_string();
+        let data = field.bytes().await.unwrap();
+
+        form.insert(name.clone(), data.clone());
+    }
+
+    let file = form.clone().get("data").expect("No file (data)").to_vec();
+    let cipher_bytes = form
+        .clone()
+        .get("cipher")
+        .expect("Cipher not in form")
+        .to_vec();
+
+    let hmac_bytes = form.get("hmac").expect("Hmac not in form").to_vec();
+
+    let filename = String::from_utf8(form.get("filename").expect("No filename in form").to_vec())
+        .expect("Error creating string from UTF-8 bytes");
+
+    info!(target: "encrypting_events", "User ({}): Form is okay.", claims.email);
+
+    let dt = form
+        .clone()
+        .get("timestamp")
+        .expect("No timestamp")
+        .to_vec();
+    let t = String::from_utf8(dt).expect("Invalid timestamp");
+
+    let now = chrono::Local::now();
+    let offset = now.offset();
+
+    let date = if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
+        let temp: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
+            chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
+        if temp < now {
+            info!(target: "encrypting_events", "User ({}): Date received is in before now timestamp.", claims.email);
+            return ApiError::InvalidTimestampUnder.into_response();
+        }
+
+        temp
+    } else {
+        info!(target: "old_gen_events", "User ({}): Date received is in an invalid format.", claims.email);
+        return ApiError::InvalidTimestampFormat.into_response();
+    };
+
+    let key = claims.generate_key_from_date(date.into(), false);
+
+    encrypt_aux(
+        claims,
+        file,
+        cipher_bytes,
+        hmac_bytes,
+        filename,
+        key.as_bytes(),
+    )
+    .await
 }
 
 async fn decrypt(claims: Claims, mut mp: Multipart) -> Response {
@@ -339,7 +406,11 @@ async fn old_gen(mut claims: Claims, mut mp: Multipart) -> Response {
         form.insert(name.clone(), data.clone());
     }
 
-    let dt = form.clone().get("timestamp").expect("No timestamp").to_vec();
+    let dt = form
+        .clone()
+        .get("timestamp")
+        .expect("No timestamp")
+        .to_vec();
     let t = String::from_utf8(dt).expect("Invalid timestamp");
     println!("t: {}", t);
 
@@ -349,7 +420,6 @@ async fn old_gen(mut claims: Claims, mut mp: Multipart) -> Response {
     let date = if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
         let temp: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
             chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
-            print!("temp {:?} now {:?}", temp, now);
         if temp > now {
             info!(target: "old_gen_events", "User ({}): Date received is in after now timestamp.", claims.email);
             return ApiError::InvalidTimestampOver.into_response();
