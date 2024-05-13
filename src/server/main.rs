@@ -608,7 +608,17 @@ async fn old_gen(mut claims: Claims, mut mp: Multipart) -> Response {
         return ApiError::InvalidTimestampFormat.into_response();
     };
 
-    let key = claims.generate_key_from_date(date.into(), false);
+    let key = match form.clone().get("email") {
+        Some(e) => {
+            let e = String::from_utf8(e.to_vec()).expect("Couldnt get email");
+            info!(target: "old_gen_events", "User ({}): User requested key for email = {}", claims.email, e);
+            claims.generate_key_from_date_and_email(&e, date.into(), false)
+        }
+        None => {
+            info!(target: "old_gen_events", "User ({}): User requested key for his own email", claims.email);
+            claims.generate_key_from_date(date.into(), false)
+        }
+    };
 
     info!(target: "old_gen_events", "User ({}): Date received is in valid format. Key generated. Sending...", claims.email);
 

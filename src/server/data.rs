@@ -156,6 +156,17 @@ impl Claims {
         let email = self.email.clone();
         self.get_key(&email, res, sub)
     }
+
+    pub fn generate_key_from_date_and_email(
+        &mut self,
+        email: &str,
+        date: chrono::DateTime<chrono::Utc>,
+        sub: bool,
+    ) -> String {
+        let clamped_now = clamp_to_5_minutes(date);
+        let res = str_of_date(clamped_now);
+        self.get_key(&email, res, sub)
+    }
 }
 
 impl Display for Claims {
