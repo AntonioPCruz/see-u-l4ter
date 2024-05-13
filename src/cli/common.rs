@@ -3,6 +3,8 @@ use serde::Deserialize;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::exit;
+use chrono::{NaiveDateTime, TimeZone};
+
 pub const FORMAT_STR: &str = "%Y-%m-%d-%H:%M";
 pub const EMAIL_REGEX_PATTERN: &str = r#"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"#;
 
@@ -16,7 +18,7 @@ pub fn success(s: &str) {
     println!("\x1b[1;32mSuccess! \x1b[0m{}", s)
 }
 
-pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
+pub fn str_of_date(d: chrono::DateTime<chrono::Utc>) -> String {
     format!(
         "{}-{:02}-{:02}-{:02}:{:02}",
         d.year(),
@@ -25,6 +27,60 @@ pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
         d.hour(),
         d.minute()
     )
+}
+
+pub fn str_of_date_local(d: chrono::DateTime<chrono::Local>) -> String {
+    format!(
+        "{}-{:02}-{:02}-{:02}:{:02}",
+        d.year(),
+        d.month(),
+        d.day(),
+        d.hour(),
+        d.minute()
+    )
+}
+
+pub fn str_to_utc_string(t: String) -> String {
+    let dt = chrono::Utc::now().with_second(0).expect("Couldt change second").with_nanosecond(0).expect("Couldnt change nano");
+    let offset = dt.offset();
+
+    println!("{}", dt);
+
+    if let Ok(naive) = NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
+        let t = chrono::Local.from_local_datetime(&naive)
+            .latest()
+            .expect("Failed to convert to local datetime")
+            .with_timezone(&chrono::Utc);
+        println!("{}", t);
+        if t < dt {
+            error_out("The date can't be less than the time right now!")
+        }
+
+        (str_of_date(t))
+    } else {
+        error_out(
+            "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN",
+        );
+        unreachable!()
+    }
+
+//     let now = chrono::Local::now();
+//     let offset = now.offset();
+//
+//     let date = if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
+//         let temp: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
+//             chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
+//         if temp < now {
+//             error_out("The date can't be less than the time right now!")
+//         }
+//
+//         temp
+//     } else {
+//         error_out(
+//             "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN",
+//         );
+//         unreachable!()
+//     };
 }
 
 pub fn write_to_config_file(xdg_dirs: xdg::BaseDirectories, left: String, right: String) {

@@ -16,11 +16,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fmt::Display;
+use log::info;
 
 use crate::KEYS;
 
 // general functions
-pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
+pub fn str_of_date(d: chrono::DateTime<chrono::Utc>) -> String {
     format!(
         "{}:{:02}:{:02}:{:02}:{:02}",
         d.year(),
@@ -31,7 +32,7 @@ pub fn str_of_date(d: chrono::DateTime<chrono::Local>) -> String {
     )
 }
 
-fn clamp_to_5_minutes(dt: chrono::DateTime<chrono::Local>) -> chrono::DateTime<chrono::Local> {
+fn clamp_to_5_minutes(dt: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<chrono::Utc> {
     let minutes = dt.minute();
     let clamped_minutes = (minutes / 5) * 5; // Round down to the nearest 5-minute interval
     dt.with_minute(clamped_minutes).unwrap_or_else(|| dt)
@@ -98,7 +99,9 @@ pub enum AuthError {
 
 #[derive(Debug)]
 pub enum ApiError {
-    InvalidFile,
+    InvalidFile(String),
+    InvalidHmacOptions,
+    InvalidHmacCipherText,
     InvalidTimestampFormat,
     InvalidTimestampOver,
     InvalidTimestampUnder,
@@ -119,6 +122,8 @@ impl Claims {
 
         // read hash digest and consume hasher
         let key = BASE64_STANDARD.encode(hasher.finalize());
+
+        info!(target: "key_generation", "Email ({}): Date = {}, Generated key = {}", email, date, key);
         if sub {
             self.key = key.clone();
         }
@@ -126,16 +131,24 @@ impl Claims {
     }
 
     pub fn generate_key_from_now(&mut self, sub: bool) -> String {
-        let now = chrono::Local::now();
+        let now = chrono::Utc::now();
+        println!("{}", now);
         let clamped_now = clamp_to_5_minutes(now);
         let res = str_of_date(clamped_now);
         let email = self.email.clone();
         self.get_key(&email, res, sub)
     }
 
+    pub fn generate_key_from_now_and_email(&mut self, email: &str, sub: bool) -> String {
+        let now = chrono::Utc::now().into();
+        let clamped_now = clamp_to_5_minutes(now);
+        let res = str_of_date(clamped_now);
+        self.get_key(&email, res, sub)
+    }
+
     pub fn generate_key_from_date(
         &mut self,
-        date: chrono::DateTime<chrono::Local>,
+        date: chrono::DateTime<chrono::Utc>,
         sub: bool,
     ) -> String {
         let clamped_now = clamp_to_5_minutes(date);
@@ -229,22 +242,34 @@ impl IntoResponse for AuthError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
-            ApiError::InvalidFile => (StatusCode::BAD_REQUEST, "Ivalid file."),
+            ApiError::InvalidFile(s) => {
+                let msg = format!("Invalid file. {} not present.", s);
+                (StatusCode::BAD_REQUEST, msg)
+            }
+            ApiError::InvalidHmacOptions => (
+                StatusCode::BAD_REQUEST,
+                "Careful! The HMAC for the options doesn't match! Did the file get modified or should you wait a little bit more?".to_string(),
+            ),
+            ApiError::InvalidHmacCipherText => (
+                StatusCode::BAD_REQUEST,
+                "Careful! The HMAC for the encoded file doesn't match!".to_string(),
+            ),
             ApiError::InvalidTimestampFormat => (
                 StatusCode::BAD_REQUEST,
-                "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN",
+                "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN"
+                    .to_string(),
             ),
             ApiError::InvalidTimestampOver => (
                 StatusCode::BAD_REQUEST,
-                "The date can't be after the current date!",
+                "The date can't be after the current date!".to_string(),
             ),
             ApiError::InvalidTimestampUnder => (
                 StatusCode::BAD_REQUEST,
-                "The date can't be before the current date!",
+                "The date can't be before the current date!".to_string(),
             ),
         };
         let body = Json(json!({
-            "error": error_message,
+            "error": &error_message,
         }));
         (status, body).into_response()
     }

@@ -1,9 +1,11 @@
 mod common;
 use clap::{arg, builder::OsStr, Arg, Command};
+use decrypt::decrypt;
 use encrypt::encrypt;
 use login::login;
 use register::register;
 mod encrypt;
+mod decrypt;
 mod old;
 mod watch;
 mod login;
@@ -33,7 +35,7 @@ fn cli() -> Command {
                 .short('t')
                 .help("Optional Time   : YEAR-MONTH-DAY-HOUR:MIN. Default: Current Time")
                 .required(false)
-                .default_value(OsStr::from(common::str_of_date(chrono::Local::now()))),
+                .default_value(OsStr::from(common::str_of_date_local(chrono::Local::now()))),
         )
         .arg_required_else_help(true);
 
@@ -53,7 +55,7 @@ fn cli() -> Command {
                 .short('t')
                 .help("Optional Past Time: YEAR-MONTH-DAY-HOUR:MIN. Default: Current Time")
                 .required(false)
-                .default_value(OsStr::from(common::str_of_date(chrono::Local::now()))),
+                .default_value(OsStr::from(common::str_of_date_local(chrono::Local::now()))),
         )
         .arg_required_else_help(true);
 
@@ -65,7 +67,7 @@ fn cli() -> Command {
                 .short('t')
                 .help("YEAR-MONTH-DAY-HOUR:MIN")
                 .required(true)
-                .default_value(OsStr::from(common::str_of_date(chrono::Local::now()))),
+                .default_value(OsStr::from(common::str_of_date_local(chrono::Local::now()))),
         )
         .arg(Arg::new("email")
             .short('e')
@@ -101,9 +103,7 @@ async fn main() {
     let cmd = cli().get_matches();
     match cmd.subcommand() {
         Some(("encrypt", sub_matches)) => encrypt(xdg_dirs, sub_matches).await,
-        Some(("decrypt", _sub_matches)) => {
-            println!("Hello from decrypt command! :)");
-        }
+        Some(("decrypt", sub_matches)) => decrypt(xdg_dirs, sub_matches).await,
         Some(("old", sub_matches)) => old::old(xdg_dirs, sub_matches).await,
         Some(("watch", _)) => watch::watch(xdg_dirs, "ola").await,
 

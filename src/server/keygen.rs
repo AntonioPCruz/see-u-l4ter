@@ -8,7 +8,7 @@ use axum_extra::{
     headers::{authorization::Bearer, Authorization, Header},
     TypedHeader,
 };
-use jsonwebtoken::{decode, encode, Header as OtherHeader, TokenData, Validation};
+use jsonwebtoken::{decode, encode, Header as OtherHeader, Validation};
 use log::{info, warn};
 
 use crate::data::*;

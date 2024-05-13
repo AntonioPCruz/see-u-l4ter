@@ -39,26 +39,12 @@ pub async fn encrypt(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
     let timestamp_part = match sub_matches.value_source("timestamp") {
         Some(ValueSource::DefaultValue) => {
             is_now = true;
-            reqwest::multipart::Part::text(t.to_string())
+            let d = str_to_utc_string(t.to_string());
+            reqwest::multipart::Part::text(d)
         }
         Some(ValueSource::CommandLine) => {
-            let dt = chrono::Local::now();
-            let offset = dt.offset();
-
-            if let Ok(naive) = NaiveDateTime::parse_from_str(t, FORMAT_STR) {
-                let t: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
-                    chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
-                if t < dt {
-                    error_out("The date can't be less than the time right now!")
-                }
-
-                reqwest::multipart::Part::text(str_of_date(t.into()))
-            } else {
-                error_out(
-                    "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN",
-                );
-                unreachable!()
-            }
+            let d = str_to_utc_string(t.to_string());
+            reqwest::multipart::Part::text(d)
         }
         _ => unreachable!(),
     };
