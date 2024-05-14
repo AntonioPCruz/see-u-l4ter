@@ -241,7 +241,7 @@ async fn encrypt_aux(
     info!(target: "encrypting_events", "User ({}): Encryption complete with ciphermode {}, HMAC complete with hashing algorithm {}", claims.email, data::ciphercode_to_string(c), data::hmaccode_to_string(h));
 
     let metadata = format!("cipher = {}\nhmac = {}\n", c, h);
-    let hmac_metadata = hmac.hash(&key[16..32], metadata.as_bytes());
+    let hmac_metadata = HashAlgorithms::HmacSha256.hash(&key[16..32], metadata.as_bytes());
 
     info!(target: "encrypting_events", "User ({}): Metadata created and metadata HMAC complete. cipher = {}, hmac = {}", claims.email, c, h);
 
