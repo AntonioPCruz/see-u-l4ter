@@ -2,7 +2,7 @@ use axum::Router;
 use axum::{
     extract::{Host, Multipart},
     handler::HandlerWithoutStateExt,
-    http::{cors::CorsLayer, cors::any, header, StatusCode, Uri},
+    http::{header, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     BoxError, Extension, Json,
