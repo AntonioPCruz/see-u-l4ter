@@ -50,13 +50,6 @@ fn cli() -> Command {
             .help("Optional String   : The email associated with the encrytion step. If this is not provided, your email will be used.")
             .required(false)
         )
-        .arg(
-            Arg::new("timestamp")
-                .short('t')
-                .help("Optional Past Time: YEAR-MONTH-DAY-HOUR:MIN. Default: Current Time")
-                .required(false)
-                .default_value(OsStr::from(common::str_of_date_local(chrono::Local::now()))),
-        )
         .arg_required_else_help(true);
 
     let old = Command::new("old")
