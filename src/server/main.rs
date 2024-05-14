@@ -2,7 +2,7 @@ use axum::Router;
 use axum::{
     extract::{Host, Multipart},
     handler::HandlerWithoutStateExt,
-    http::{header, StatusCode, Uri},
+    http::{cors::CorsLayer, cors::any, header, StatusCode, Uri},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     BoxError, Extension, Json,
@@ -14,11 +14,13 @@ use axum_server::tls_rustls::RustlsConfig;
 use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
 use once_cell::sync::Lazy;
+use reqwest::Method;
 use ring::digest::digest;
 use serde_json::json;
 use sha2::{Sha256, Sha512};
 use sqlx::Row;
 use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
+use tower_http::cors::{any, CorsLayer};
 use std::fs::OpenOptions;
 use std::{io::Read, time::UNIX_EPOCH};
 use std::{net::SocketAddr, path::PathBuf};
@@ -176,7 +178,8 @@ async fn main() {
         .layer(axum::middleware::from_fn(keygen::keygen_middleware))
         .route("/login", post(login))
         .route("/register", post(register))
-        .layer(Extension(sqlpool));
+        .layer(Extension(sqlpool))
+        .layer(CorsLayer::new().allow_methods(vec![Method::GET, Method::POST]).allow_origin(any()));
 
     info!("Server started!");
     // run https server
