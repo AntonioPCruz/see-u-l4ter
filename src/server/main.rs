@@ -15,15 +15,13 @@ use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
 use once_cell::sync::Lazy;
 use reqwest::Method;
-use ring::digest::digest;
 use serde_json::json;
 use sha2::{Sha256, Sha512};
 use sqlx::Row;
 use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
-use tower_http::cors::CorsLayer;
-use std::fs::OpenOptions;
 use std::{io::Read, time::UNIX_EPOCH};
 use std::{net::SocketAddr, path::PathBuf};
+use tower_http::cors::CorsLayer;
 use zip::write::SimpleFileOptions;
 mod data;
 mod jwt;
@@ -168,12 +166,13 @@ async fn main() {
     */
 
     let cors = CorsLayer::new()
-                .allow_methods(vec![Method::GET, Method::POST])
-                .allow_headers(tower_http::cors::Any)
-                .allow_origin(tower_http::cors::Any);
+        .allow_methods(vec![Method::GET, Method::POST])
+        .allow_headers(tower_http::cors::Any)
+        .allow_origin(tower_http::cors::Any);
 
     let app = Router::new()
         .route("/protected", get(protected))
+        .route("/profile", get(profile))
         .route("/api/now/encrypt", post(encrypt_now))
         .route("/api/now/decrypt", post(decrypt_now))
         .route("/api/later/encrypt", post(encrypt_later))
@@ -196,10 +195,24 @@ async fn main() {
         .unwrap();
 }
 
-async fn protected(claims: Claims) -> Result<String, AuthError> {
-    Ok(format!(
-        "Welcome to the protected area :)\nYour data:\n{claims}",
-    ))
+async fn protected(claims: Claims) -> Result<Json<Claims>, AuthError> {
+    Ok(Json(claims))
+}
+
+async fn profile(
+    Extension(pool): Extension<SqlitePool>,
+    claims: Claims,
+) -> Result<Json<Profile>, AuthError> {
+    let user = sqlx::query("SELECT * FROM users WHERE ? = email")
+        .bind(claims.email.clone())
+        .fetch_one(&pool)
+        .await
+        .expect("oopsies");
+
+    Ok(Json(Profile {
+        name: user.get("name"),
+        email: user.get("email"),
+    }))
 }
 
 /* cipher and hmac codes:
@@ -243,7 +256,8 @@ async fn encrypt_aux(
     info!(target: "encrypting_events", "User ({}): Key used for hmacs = {}", claims.email, BASE64_STANDARD.encode(&key[16..32]));
     info!(target: "encrypting_events", "User ({}): Encryption starting", claims.email);
 
-    let ciphertext = encrypt(cipher, &key[0..16], Some(IV), file.as_slice()).expect("Encrypting error");
+    let ciphertext =
+        encrypt(cipher, &key[0..16], Some(IV), file.as_slice()).expect("Encrypting error");
     let hmac_result = hmac.hash(&key[16..32], ciphertext.as_slice());
 
     info!(target: "encrypting_events", "User ({}): Encryption complete with ciphermode {}, HMAC complete with hashing algorithm {}", claims.email, data::ciphercode_to_string(c), data::hmaccode_to_string(h));
@@ -389,21 +403,12 @@ async fn encrypt_later(mut claims: Claims, mut mp: Multipart) -> Response {
         .decode(&key)
         .expect("Couldnt decode base64 key");
 
-    encrypt_aux(
-        claims,
-        file,
-        cipher_bytes,
-        hmac_bytes,
-        filename,
-        key,
-    )
-    .await
+    encrypt_aux(claims, file, cipher_bytes, hmac_bytes, filename, key).await
 }
 
 async fn decrypt_aux(claims: Claims, file: Vec<u8>, key: &[u8]) -> Response {
-    use regex::Regex;
-
-    let mut zip = zip::read::ZipArchive::new(Cursor::new(file.clone())).expect("Expected a zip file");
+    let mut zip =
+        zip::read::ZipArchive::new(Cursor::new(file.clone())).expect("Expected a zip file");
     assert_eq!(4, zip.len());
     let mut htbl = HashMap::new();
     let mut vec_files = Vec::new();
@@ -558,7 +563,7 @@ async fn decrypt_now(mut claims: Claims, mut mp: Multipart) -> Response {
             let e = String::from_utf8(e.to_vec()).expect("Couldnt get email");
             claims.generate_key_from_now_and_email(&e, false)
         }
-        None => claims.generate_key_from_now(false)
+        None => claims.generate_key_from_now(false),
     };
 
     info!(target: "decrypting_events", "User ({}): Key thats gonna be used = {}.", claims.email, key);

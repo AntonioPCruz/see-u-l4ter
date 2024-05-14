@@ -12,11 +12,11 @@ use axum_extra::{
 use base64::prelude::*;
 use chrono::{Datelike, Timelike};
 use jsonwebtoken::{decode, DecodingKey, EncodingKey, Validation};
+use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fmt::Display;
-use log::info;
 
 use crate::KEYS;
 
@@ -62,6 +62,12 @@ pub struct Claims {
     pub key: String,
     pub key_timestamp: u64,
     pub exp: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Profile {
+    pub name: String,
+    pub email: String,
 }
 
 pub struct Keys {
