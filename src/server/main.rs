@@ -167,6 +167,11 @@ async fn main() {
        /register  -> register route. Input: email and password
     */
 
+    let cors = CorsLayer::new()
+                .allow_methods(vec![Method::GET, Method::POST])
+                .allow_headers(tower_http::cors::Any)
+                .allow_origin(tower_http::cors::Any);
+
     let app = Router::new()
         .route("/protected", get(protected))
         .route("/api/now/encrypt", post(encrypt_now))
@@ -179,7 +184,7 @@ async fn main() {
         .route("/login", post(login))
         .route("/register", post(register))
         .layer(Extension(sqlpool))
-        .layer(CorsLayer::new().allow_methods(vec![Method::GET, Method::POST]).allow_origin(tower_http::cors::Any));
+        .layer(cors);
 
     info!("Server started!");
     // run https server
