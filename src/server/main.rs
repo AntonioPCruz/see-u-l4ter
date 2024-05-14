@@ -20,7 +20,7 @@ use serde_json::json;
 use sha2::{Sha256, Sha512};
 use sqlx::Row;
 use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
-use tower_http::cors::{any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use std::fs::OpenOptions;
 use std::{io::Read, time::UNIX_EPOCH};
 use std::{net::SocketAddr, path::PathBuf};
@@ -179,7 +179,7 @@ async fn main() {
         .route("/login", post(login))
         .route("/register", post(register))
         .layer(Extension(sqlpool))
-        .layer(CorsLayer::new().allow_methods(vec![Method::GET, Method::POST]).allow_origin(any()));
+        .layer(CorsLayer::new().allow_methods(vec![Method::GET, Method::POST]).allow_origin(tower_http::cors::Any));
 
     info!("Server started!");
     // run https server
