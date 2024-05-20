@@ -269,7 +269,7 @@ async fn encrypt_aux(
 
 
     let mut buf = vec![0; ciphertext.len()+1000];
-    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf.as_slice()[..]));
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf.as_mut_slice()[..]));
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
     let filename_enc = format!("{}.enc", filename.clone());
