@@ -521,8 +521,8 @@ async fn decrypt_aux(claims: Claims, file: Vec<u8>, key: &[u8]) -> Response {
     let plaintext = decrypt(cipher, &key[0..16], Some(IV), &file_buf).expect("Decrypting failed");
     info!(target: "decrypting_events", "User ({}): Decryption ended. Key used = {}", claims.email, BASE64_STANDARD.encode(&key[0..16]));
 
-    let mut buf = [0; 100_000];
-    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
+    let mut buf = vec![0; plaintext.len() + 1000];
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf.as_mut_slice()[..]));
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
     zip.start_file(filename.clone(), options)
