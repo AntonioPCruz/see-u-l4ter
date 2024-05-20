@@ -267,8 +267,9 @@ async fn encrypt_aux(
 
     info!(target: "encrypting_events", "User ({}): Metadata created and metadata HMAC complete. cipher = {}, hmac = {}", claims.email, c, h);
 
-    let mut buf = [0; 100_000];
-    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf[..]));
+
+    let mut buf = vec![0; ciphertext.len()+1000];
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf.as_slice()[..]));
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
     let filename_enc = format!("{}.enc", filename.clone());
