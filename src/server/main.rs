@@ -268,7 +268,7 @@ async fn encrypt_aux(
     info!(target: "encrypting_events", "User ({}): Metadata created and metadata HMAC complete. cipher = {}, hmac = {}", claims.email, c, h);
 
 
-    let mut buf = vec![0; ciphertext.len()+1000];
+    let mut buf = vec![0; ciphertext.len() + 1000];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf.as_mut_slice()[..]));
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
@@ -603,20 +603,15 @@ async fn old_gen(mut claims: Claims, mut mp: Multipart) -> Response {
         .expect("No timestamp")
         .to_vec();
     let t = String::from_utf8(dt).expect("Invalid timestamp");
-    println!("t: {}", t);
-
-    let now = chrono::Local::now();
-    let offset = now.offset();
 
     let date = if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
-        let temp: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
-            chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
-        if temp > now {
-            info!(target: "old_gen_events", "User ({}): Date received is in after now timestamp.", claims.email);
+        let utc_datetime = chrono::Utc.from_utc_datetime(&naive);
+        if utc_datetime > chrono::Utc::now() {
+            info!(target: "old_gen_events", "User ({}): Date received is after current timestamp.", claims.email);
             return ApiError::InvalidTimestampOver.into_response();
         }
 
-        temp
+        utc_datetime
     } else {
         info!(target: "old_gen_events", "User ({}): Date received is in an invalid format.", claims.email);
         return ApiError::InvalidTimestampFormat.into_response();

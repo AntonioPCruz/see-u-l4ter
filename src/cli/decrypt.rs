@@ -42,7 +42,7 @@ pub async fn decrypt(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
 
     let token = format!("Bearer {}", read_from_config_file(xdg_dirs, "token".into()));
 
-    // The response (the Authorization token should come from the config.ini probably)
+    // The response 
     let response = client
         .post("https://localhost:3000/api/now/decrypt")
         .header("Authorization", token)

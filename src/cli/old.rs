@@ -1,4 +1,4 @@
-use crate::common::{error_out, read_from_config_file, ErrorBody, KeyBody, FORMAT_STR, str_of_date};
+use crate::common::*;
 
 use clap::{parser::ValueSource, ArgMatches};
 use chrono::{NaiveDateTime, TimeZone};
@@ -22,23 +22,8 @@ pub async fn old(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
             reqwest::multipart::Part::text(t.to_string())
         }
         Some(ValueSource::CommandLine) => {
-            let dt = chrono::Local::now();
-            let offset = dt.offset();
-
-            if let Ok(naive) = NaiveDateTime::parse_from_str(t, FORMAT_STR) {
-                let t: chrono::DateTime<<chrono::FixedOffset as TimeZone>::Offset> =
-                    chrono::DateTime::from_naive_utc_and_offset(naive, *offset);
-                if t > dt {
-                    error_out("The date can't be more than the time right now!")
-                }
-
-                reqwest::multipart::Part::text(str_of_date(t.into()))
-            } else {
-                error_out(
-                    "The date string is not in the correct format! Try YEAR-MONTH-DAY-HOUR:MIN",
-                );
-                unreachable!()
-            }
+            let d = str_to_utc_string(t.to_string(), false);
+            reqwest::multipart::Part::text(d)
         }
         _ => unreachable!(),
     };
@@ -50,8 +35,6 @@ pub async fn old(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
         None => reqwest::multipart::Form::new()
                     .part("timestamp", timestamp_part)
     };
-
-    println!("{:?}", e);
 
     let token = format!(
         "Bearer {}",

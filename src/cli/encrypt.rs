@@ -38,11 +38,11 @@ pub async fn encrypt(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
     let timestamp_part = match sub_matches.value_source("timestamp") {
         Some(ValueSource::DefaultValue) => {
             is_now = true;
-            let d = str_to_utc_string(t.to_string());
+            let d = str_to_utc_string(t.to_string(), true);
             reqwest::multipart::Part::text(d)
         }
         Some(ValueSource::CommandLine) => {
-            let d = str_to_utc_string(t.to_string());
+            let d = str_to_utc_string(t.to_string(), true);
             reqwest::multipart::Part::text(d)
         }
         _ => unreachable!(),

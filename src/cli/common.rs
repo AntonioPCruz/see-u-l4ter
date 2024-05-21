@@ -40,7 +40,7 @@ pub fn str_of_date_local(d: chrono::DateTime<chrono::Local>) -> String {
     )
 }
 
-pub fn str_to_utc_string(t: String) -> String {
+pub fn str_to_utc_string(t: String, less: bool) -> String {
     let dt = chrono::Utc::now().with_second(0).expect("Couldt change second").with_nanosecond(0).expect("Couldnt change nano");
 
     println!("{}", dt);
@@ -51,8 +51,15 @@ pub fn str_to_utc_string(t: String) -> String {
             .expect("Failed to convert to local datetime")
             .with_timezone(&chrono::Utc);
         println!("{}", t);
-        if t < dt {
-            error_out("The date can't be less than the time right now!")
+        if less {
+            if t < dt {
+                error_out("The date can't be less than the time right now!")
+            }
+        }
+        else {
+            if t > dt {
+                error_out("The date can't be after the time right now!")
+            }
         }
 
         str_of_date(t)
