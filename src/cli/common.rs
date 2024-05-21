@@ -43,14 +43,11 @@ pub fn str_of_date_local(d: chrono::DateTime<chrono::Local>) -> String {
 pub fn str_to_utc_string(t: String, less: bool) -> String {
     let dt = chrono::Utc::now().with_second(0).expect("Couldt change second").with_nanosecond(0).expect("Couldnt change nano");
 
-    println!("{}", dt);
-
     if let Ok(naive) = NaiveDateTime::parse_from_str(&t, FORMAT_STR) {
         let t = chrono::Local.from_local_datetime(&naive)
             .latest()
             .expect("Failed to convert to local datetime")
             .with_timezone(&chrono::Utc);
-        println!("{}", t);
         if less {
             if t < dt {
                 error_out("The date can't be less than the time right now!")
