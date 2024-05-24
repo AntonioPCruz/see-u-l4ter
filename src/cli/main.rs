@@ -62,11 +62,6 @@ fn cli() -> Command {
                 .required(true)
                 .default_value(OsStr::from(common::str_of_date_local(chrono::Local::now()))),
         )
-        .arg(Arg::new("email")
-            .short('e')
-            .help("Optional String   : The email associated with the key. If this is not provided, your email will be used.")
-            .required(false)
-        )
         .arg_required_else_help(true);
 
     let watch = Command::new("watch")

@@ -7,11 +7,6 @@ use reqwest::Client;
 
 pub async fn old(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
     let t = sub_matches.get_one::<String>("timestamp").unwrap();
-    let e = match sub_matches.get_one::<String>("email") {
-        Some(e) => Some(e),
-        None => None
-    };
-
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
@@ -28,13 +23,7 @@ pub async fn old(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
         _ => unreachable!(),
     };
 
-    let part = match e {
-        Some(e) => reqwest::multipart::Form::new()
-                    .part("timestamp", timestamp_part)
-                    .part("email", reqwest::multipart::Part::text(e.to_string())),
-        None => reqwest::multipart::Form::new()
-                    .part("timestamp", timestamp_part)
-    };
+    let part = reqwest::multipart::Form::new().part("timestamp", timestamp_part);
 
     let token = format!(
         "Bearer {}",
