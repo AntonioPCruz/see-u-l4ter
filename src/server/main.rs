@@ -18,6 +18,8 @@ use rsa::pkcs8::DecodePublicKey;
 use rsa::signature::{Keypair, RandomizedSigner, SignatureEncoding, Verifier};
 use rsa::sha2::Digest;
 
+use tower_http::limit::RequestBodyLimitLayer;
+
 use axum_server::tls_rustls::RustlsConfig;
 use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
@@ -191,6 +193,8 @@ async fn main() {
         .route("/login", post(login))
         .route("/register", post(register))
         .layer(Extension(sqlpool))
+        .layer(axum::extract::DefaultBodyLimit::disable())
+        .layer(RequestBodyLimitLayer::new(250 * 1000 * 1000))
         .layer(cors);
 
     info!("Server started!");
