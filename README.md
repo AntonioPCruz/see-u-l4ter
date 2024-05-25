@@ -7,7 +7,7 @@
 # server
 - [x] Logging
 - [x] TLS
-- [ ] RSA
+- [x] RSA
 - [x] Routes
   - [x] Login
   - [x] Register
@@ -42,7 +42,7 @@ TODO
 
 - [x] escolher entre varios tipos de cifra
 - [x] escolher HMAC entre 256 e 512
-- [ ] keypairs RSA 
+- [x] keypairs RSA 
 - [x] signup por email e password no cli 
 - [x] signup por email e password no site
 - [x] permitir um user aceder qualquer chave que tenha usado no passado
