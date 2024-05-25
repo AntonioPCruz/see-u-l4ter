@@ -1,0 +1,55 @@
+.file-to-encrypt-div {
+  border: 2px solid #e1e1e1;
+  border-radius: 5px;
+  padding: 10px;
+}
+
+.encrypt-now-modal-box h1 {
+  margin-bottom: 20px;
+}
+
+.file-to-encrypt-div__pick-file-btn {
+  margin-top: 5px !important;
+}
+
+.file-to-encrypt-div__file-name {
+  margin: 20px 0;
+}
+
+.file-to-encrypt-div__file-name span {
+  background-color: #e1e1e1;
+  padding: 5px;
+  border-radius: 5px;
+}
+
+.oldkey-div {
+  border: 2px solid green;
+  padding: 10px;
+  margin-top: 20px;
+  align-self: stretch;
+}
+
+.oldkey-div h3 {
+  margin-bottom: 10px;
+}
+
+.oldkey-div__container {
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  flex-direction: column;
+}
+
+.oldkey-div p {
+  overflow-wrap: break-word;
+}
+
+.copy-btn {
+  margin-top: 5px !important;
+  align-self: stretch !important;
+  background-color: #e7e7e7 !important;
+  border-radius: 3px !important;
+}
+
+/* .file-to-encrypt-div__clear-btn {
+} */

@@ -1,0 +1,54 @@
+main {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  flex-direction: column;
+}
+
+.auth-navbar {
+  width: 100vw;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-direction: row;
+}
+
+.auth-navbar .home-btn {
+  margin-left: 20px;
+}
+
+.auth-div {
+  z-index: 999;
+  margin-top: auto;
+  margin-bottom: auto;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-direction: column;
+
+  padding: 50px;
+  background-color: #ececec;
+  border: 2px solid #b4bfca;
+  box-shadow: rgba(149, 157, 165, 0.2) 0px 8px 24px;
+}
+
+.auth-div {
+  color: #000;
+}
+
+.auth-title-div {
+  text-align: center;
+}
+
+.auth-text-field-div {
+  margin: 30px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.auth-text-field {
+  margin: 5px 0 !important;
+}

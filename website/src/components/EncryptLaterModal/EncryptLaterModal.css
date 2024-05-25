@@ -1,0 +1,35 @@
+.file-to-encrypt-div {
+  border: 2px dashed #848484;
+  border-radius: 5px;
+  padding: 10px;
+}
+
+.encrypt-now-modal-box h1 {
+  margin-bottom: 20px;
+}
+
+.file-to-encrypt-div__pick-file-btn {
+  margin-top: 5px !important;
+}
+
+.file-to-encrypt-div__file-name {
+  margin: 20px 0;
+}
+
+.file-to-encrypt-div__file-name span {
+  background-color: #e1e1e1;
+  padding: 5px;
+  border-radius: 5px;
+}
+
+.timestamp-div {
+  margin-top: 20px;
+  margin-bottom: 30px;
+
+  border: 2px dashed #848484;
+  border-radius: 3px;
+  padding: 10px;
+}
+
+/* .file-to-encrypt-div__clear-btn {
+} */
