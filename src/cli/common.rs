@@ -68,6 +68,29 @@ pub fn str_to_utc_string(t: String, less: bool) -> String {
     }
 }
 
+pub fn write_config_file(xdg_dirs: xdg::BaseDirectories, file_name: String, content: String) {
+    match xdg_dirs.find_config_file(file_name.clone()) {
+        Some(config) => std::fs::write(config, content).expect("Coudlnt write to file"),
+        None => {
+            let config_path = xdg_dirs
+                .place_config_file(file_name)
+                .expect("Couldn't place config file in xdg folder");
+
+            std::fs::write(config_path, content).expect("Couldnt write to file")
+        }
+    };
+}
+
+pub fn read_config_file(xdg_dirs: xdg::BaseDirectories, file_name: String) -> String {
+    match xdg_dirs.find_config_file(file_name.clone()) {
+        Some(config) => std::fs::read_to_string(config).expect("Coudlnt write to file"),
+        None => {
+            error_out(&format!("No {} found in the config directory!", file_name)); 
+            unreachable!();
+        }
+    }
+}
+
 pub fn write_to_config_file(xdg_dirs: xdg::BaseDirectories, left: String, right: String) {
     fn write_it(path: PathBuf, left: String, right: String) {
         // Open the file for reading and writing

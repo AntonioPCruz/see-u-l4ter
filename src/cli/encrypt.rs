@@ -1,3 +1,9 @@
+use rsa::pkcs1::{LineEnding, DecodeRsaPrivateKey, EncodeRsaPrivateKey, EncodeRsaPublicKey};
+use rsa::RsaPrivateKey;
+use rsa::pkcs1v15::{SigningKey, VerifyingKey};
+use rsa::signature::{Keypair, RandomizedSigner, SignatureEncoding, Verifier};
+use rsa::sha2::{Digest, Sha256};
+
 use crate::common::*;
 
 use clap::{parser::ValueSource, ArgMatches};
@@ -60,8 +66,18 @@ pub async fn encrypt(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
         unreachable!()
     });
 
+    // Sign the file with RSA private key
+    let mut rng = rand::thread_rng();
+
+    let sk_str = read_config_file(xdg_dirs.clone(), "sk.pem".into());
+    let sk = rsa::RsaPrivateKey::from_pkcs1_pem(&sk_str).expect("Coudlnt get sk");
+
+    let signing_key = SigningKey::<Sha256>::new(sk);
+    let sig = signing_key.sign_with_rng(&mut rng, &file);
+
     // Lets create the form fields
     let file_part = reqwest::multipart::Part::bytes(file).file_name(f.clone());
+    let sig_part = reqwest::multipart::Part::bytes(sig.to_vec()).file_name("sig");
     let cipher_part = reqwest::multipart::Part::text(format!("{}", c));
     let hmac_part = reqwest::multipart::Part::text(format!("{}", hmac));
     let filename_part = reqwest::multipart::Part::text(format!("{}", f.clone()));
@@ -69,6 +85,7 @@ pub async fn encrypt(xdg_dirs: xdg::BaseDirectories, sub_matches: &ArgMatches) {
     // And the actual form
     let part = reqwest::multipart::Form::new()
         .part("data", file_part)
+        .part("sig", sig_part)
         .part("filename", filename_part)
         .part("cipher", cipher_part)
         .part("hmac", hmac_part)

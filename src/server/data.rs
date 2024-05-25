@@ -85,6 +85,7 @@ pub struct AuthBody {
 pub struct AuthPayload {
     pub email: String,
     pub client_secret: String,
+    pub pk: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,6 +93,7 @@ pub struct RegisterPayload {
     pub name: String,
     pub email: String,
     pub client_secret: String,
+    pub pk: String,
 }
 
 #[derive(Debug)]
@@ -106,6 +108,7 @@ pub enum AuthError {
 #[derive(Debug)]
 pub enum ApiError {
     InvalidFile(String),
+    InvalidSignature,
     InvalidHmacOptions,
     InvalidHmacCipherText,
     InvalidTimestampFormat,
@@ -263,6 +266,10 @@ impl IntoResponse for ApiError {
                 let msg = format!("Invalid file. {} not present.", s);
                 (StatusCode::BAD_REQUEST, msg)
             }
+            ApiError::InvalidSignature => (
+                StatusCode::BAD_REQUEST,
+                "Careful! The signature doesn't match! Did someone change the file mid-way?".to_string(),
+            ),
             ApiError::InvalidHmacOptions => (
                 StatusCode::BAD_REQUEST,
                 "Careful! The HMAC for the options doesn't match! Did the file get modified or should you wait a little bit more?".to_string(),

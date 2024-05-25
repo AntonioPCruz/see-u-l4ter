@@ -1,12 +1,16 @@
-use crate::common::success;
+use rsa::pkcs1::{LineEnding, EncodeRsaPrivateKey, EncodeRsaPublicKey};
+use rsa::RsaPrivateKey;
+use rsa::pkcs1v15::{SigningKey, VerifyingKey};
+use rsa::signature::{Keypair, RandomizedSigner, SignatureEncoding, Verifier};
+use rsa::sha2::{Digest, Sha256};
+use crate::common::{read_config_file, success};
 use crate::common::{error_out, ErrorBody, EMAIL_REGEX_PATTERN};
 use inquire::{Password, Text};
 use regex::Regex;
 use reqwest::Client;
 use serde_json::json;
 
-use crate::common::write_to_config_file;
-use crate::common::AuthBody;
+use crate::common::*;
 
 pub async fn login(xdg_dirs: xdg::BaseDirectories) {
     let email = loop {
@@ -23,9 +27,21 @@ pub async fn login(xdg_dirs: xdg::BaseDirectories) {
         .prompt()
         .expect("Error getting pasword");
 
+    println!("Creating public and private RSA keys... (this might take a bit)");
+
+    let mut rng = rand::thread_rng();
+
+    let bits = 2048;
+    let private_key = RsaPrivateKey::new(&mut rng, bits).expect("failed to generate a key");
+    let signing_key = SigningKey::<sha2::Sha256>::new(private_key.clone());
+    let verifying_key = signing_key.verifying_key();
+
+    let pk = private_key.to_public_key().to_pkcs1_pem(LineEnding::default()).expect("Couldnt create pk");
+
     let request_body = json!({
         "email": email,
-        "client_secret": password
+        "client_secret": password,
+        "pk" : pk
     });
 
     let client = Client::builder()
@@ -46,7 +62,9 @@ pub async fn login(xdg_dirs: xdg::BaseDirectories) {
             .await
             .expect("Couldnt decode json");
 
-        write_to_config_file(xdg_dirs, "token".into(), response.access_token);
+        let sk = private_key.to_pkcs1_pem(LineEnding::default()).expect("Coudlnt create pem for sk").to_string();
+        write_to_config_file(xdg_dirs.clone(), "token".into(), response.access_token);
+        write_config_file(xdg_dirs, "sk.pem".into(), sk);
         success("Logged in! You have 5 minutes of inactivity time available, each request adds a minute!");
     } else {
         let response = response

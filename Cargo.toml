@@ -42,6 +42,8 @@ zip = "1.1.1"
 log = "0.4.21"
 fern = "0.6.2"
 humantime = "2.1.0"
+rsa = { version = "0.9.6", features = ["sha2"] }
+rand = "0.8.5"
 
 [[bin]]
 name = "server"

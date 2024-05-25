@@ -10,6 +10,12 @@ use axum::{
 use hmac::Mac;
 use log::{info, warn};
 
+use rsa::pkcs1::RsaPublicKey;
+use rsa::pkcs1::DecodeRsaPublicKey;
+use rsa::pkcs1v15::{SigningKey, VerifyingKey};
+use rsa::signature::{Keypair, RandomizedSigner, SignatureEncoding, Verifier};
+use rsa::sha2::Digest;
+
 use axum_server::tls_rustls::RustlsConfig;
 use dotenv::dotenv;
 use jsonwebtoken::{encode, Header as OtherHeader};
@@ -224,8 +230,10 @@ async fn profile(
 */
 
 async fn encrypt_aux(
+    Extension(pool): Extension<SqlitePool>,
     claims: Claims,
     file: Vec<u8>,
+    sig: Vec<u8>,
     cipher_bytes: Vec<u8>,
     hmac_bytes: Vec<u8>,
     filename: String,
@@ -233,6 +241,30 @@ async fn encrypt_aux(
 ) -> Response {
     let c = u8::from_ne_bytes([cipher_bytes[0]]) - '0' as u8;
     let h = u8::from_ne_bytes([hmac_bytes[0]]) - '0' as u8;
+
+    let sig = rsa::pkcs1v15::Signature::try_from(sig.as_slice()).expect("Error on the sig");
+
+    let pk = sqlx::query("SELECT pk FROM users WHERE ? = email")
+        .bind(claims.email.clone())
+        .fetch_one(&pool)
+        .await
+        .expect("Couldnt get pk from user");
+
+    let pk: String = pk.get(0);
+    let pk = pk.trim();
+    let public_key: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::<Sha256>::from_pkcs1_pem(&pk).expect("Couldnt get pk");
+
+    info!(target: "encrypting_events", "User ({}): Verifying the signature", claims.email);
+
+    match public_key.verify(&file, &sig) {
+        Ok(_) => (),
+        Err(_) => {
+            info!(target: "decrypting_events", "User ({}): Signature is wrong! Aborting.", claims.email);
+            return ApiError::InvalidSignature.into_response()
+        }
+    };
+
+    info!(target: "encrypting_events", "User ({}): Signature verified, Encryption starting", claims.email);
 
     let cipher = match c {
         1 => Cipher::aes_128_cbc(),
@@ -254,7 +286,6 @@ async fn encrypt_aux(
 
     info!(target: "encrypting_events", "User ({}): Key used for cipher = {}", claims.email, BASE64_STANDARD.encode(&key[0..16]));
     info!(target: "encrypting_events", "User ({}): Key used for hmacs = {}", claims.email, BASE64_STANDARD.encode(&key[16..32]));
-    info!(target: "encrypting_events", "User ({}): Encryption starting", claims.email);
 
     let ciphertext =
         encrypt(cipher, &key[0..16], Some(IV), file.as_slice()).expect("Encrypting error");
@@ -266,7 +297,6 @@ async fn encrypt_aux(
     let hmac_metadata = HashAlgorithms::HmacSha256.hash(&key[16..32], metadata.as_bytes());
 
     info!(target: "encrypting_events", "User ({}): Metadata created and metadata HMAC complete. cipher = {}, hmac = {}", claims.email, c, h);
-
 
     let mut buf = vec![0; ciphertext.len() + 1000];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf.as_mut_slice()[..]));
@@ -317,7 +347,10 @@ async fn encrypt_aux(
     (headers, buf).into_response()
 }
 
-async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
+async fn encrypt_now(
+    Extension(pool): Extension<SqlitePool>,
+    claims: Claims, mut mp: Multipart
+) -> Response {
     info!(target: "encrypting_events", "User ({}): Requested an encryption.", claims.email);
     let mut form = HashMap::new();
 
@@ -329,6 +362,7 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
     }
 
     let file = form.clone().get("data").expect("No file (data)").to_vec();
+    let sig_file = form.clone().get("sig").expect("No sig (sig)").to_vec();
     let cipher_bytes = form
         .clone()
         .get("cipher")
@@ -348,10 +382,13 @@ async fn encrypt_now(claims: Claims, mut mp: Multipart) -> Response {
         .decode(&claims.key)
         .expect("Couldnt decode base64 key");
 
-    encrypt_aux(claims, file, cipher_bytes, hmac_bytes, filename, key).await
+    encrypt_aux(axum::Extension(pool), claims, file, sig_file, cipher_bytes, hmac_bytes, filename, key).await
 }
 
-async fn encrypt_later(mut claims: Claims, mut mp: Multipart) -> Response {
+async fn encrypt_later(
+    Extension(pool): Extension<SqlitePool>,
+    mut claims: Claims, mut mp: Multipart
+) -> Response {
     info!(target: "encrypting_events", "User ({}): Requested an encryption for later.", claims.email);
     let mut form = HashMap::new();
 
@@ -363,6 +400,8 @@ async fn encrypt_later(mut claims: Claims, mut mp: Multipart) -> Response {
     }
 
     let file = form.clone().get("data").expect("No file (data)").to_vec();
+    let sig_file = form.clone().get("sig").expect("No sig (sig)").to_vec();
+
     let cipher_bytes = form
         .clone()
         .get("cipher")
@@ -404,10 +443,13 @@ async fn encrypt_later(mut claims: Claims, mut mp: Multipart) -> Response {
         .decode(&key)
         .expect("Couldnt decode base64 key");
 
-    encrypt_aux(claims, file, cipher_bytes, hmac_bytes, filename, key).await
+    encrypt_aux(axum::Extension(pool), claims, file, sig_file, cipher_bytes, hmac_bytes, filename, key).await
 }
 
-async fn decrypt_aux(claims: Claims, file: Vec<u8>, key: &[u8]) -> Response {
+async fn decrypt_aux(
+    Extension(pool): Extension<SqlitePool>,
+    claims: Claims, file: Vec<u8>, sig: Vec<u8>, key: &[u8]
+) -> Response {
     let mut zip =
         zip::read::ZipArchive::new(Cursor::new(file.clone())).expect("Expected a zip file");
     assert_eq!(4, zip.len());
@@ -422,6 +464,30 @@ async fn decrypt_aux(claims: Claims, file: Vec<u8>, key: &[u8]) -> Response {
         }
         htbl.insert(option.name().to_owned(), options_buf);
     }
+
+    let sig = rsa::pkcs1v15::Signature::try_from(sig.as_slice()).expect("Error on the sig");
+
+    let pk = sqlx::query("SELECT pk FROM users WHERE ? = email")
+        .bind(claims.email.clone())
+        .fetch_one(&pool)
+        .await
+        .expect("Couldnt get pk from user");
+
+    let pk: String = pk.get(0);
+    let pk = pk.trim();
+    let public_key: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::<Sha256>::from_pkcs1_pem(&pk).expect("Couldnt get pk");
+
+    info!(target: "decrypting_events", "User ({}): Verifying the signature", claims.email);
+
+    match public_key.verify(&file, &sig) {
+        Ok(_) => (),
+        Err(_) => {
+            info!(target: "decrypting_events", "User ({}): Signature is wrong! Aborting.", claims.email);
+            return ApiError::InvalidSignature.into_response()
+        }
+    };
+
+    info!(target: "decrypting_events", "User ({}): Signature verified!", claims.email);
 
     info!(target: "decrypting_events", "User ({}): Starting HMAC checks. HMAC Key used = {}", claims.email, BASE64_STANDARD.encode(&key[16..32]));
 
@@ -547,7 +613,10 @@ async fn decrypt_aux(claims: Claims, file: Vec<u8>, key: &[u8]) -> Response {
     (headers, buf).into_response()
 }
 
-async fn decrypt_now(mut claims: Claims, mut mp: Multipart) -> Response {
+async fn decrypt_now(
+    Extension(pool): Extension<SqlitePool>,
+    mut claims: Claims, mut mp: Multipart
+) -> Response {
     info!(target: "decrypting_events", "User ({}): Requested an decryption.", claims.email);
     let mut form = HashMap::new();
 
@@ -559,6 +628,7 @@ async fn decrypt_now(mut claims: Claims, mut mp: Multipart) -> Response {
     }
 
     let file = form.clone().get("data").expect("No file (data)").to_vec();
+    let sig_file = form.clone().get("sig").expect("No sig (sig)").to_vec();
     let key = match form.clone().get("email") {
         Some(e) => {
             let e = String::from_utf8(e.to_vec()).expect("Couldnt get email");
@@ -570,7 +640,7 @@ async fn decrypt_now(mut claims: Claims, mut mp: Multipart) -> Response {
     info!(target: "decrypting_events", "User ({}): Key thats gonna be used = {}.", claims.email, key);
 
     let k = &BASE64_STANDARD.decode(&key).expect("Couldnt decode key");
-    decrypt_aux(claims, file, k).await
+    decrypt_aux(axum::Extension(pool), claims, file, sig_file, k).await
 }
 
 async fn gen(mut claims: Claims) -> Response {
@@ -662,6 +732,9 @@ async fn login(
         return Err(AuthError::WrongCredentials);
     }
 
+    let id: u32 = user.get("id");
+    let _ = sqlx::query("UPDATE users SET pk = ? WHERE id = ?").bind(payload.pk.clone()).bind(id).execute(&pool).await;
+
     info!(target: "login_events", "User with email ({}) found on the database and their password is correct.", payload.email);
 
     let now = std::time::SystemTime::now()
@@ -693,7 +766,7 @@ async fn register(
 ) -> Result<Json<AuthBody>, AuthError> {
     info!(target: "register_events", "User with email ({}) asked to register", payload.email);
     // Check if the user sent the credentials
-    if payload.email.is_empty() || payload.client_secret.is_empty() {
+    if payload.email.is_empty() || payload.client_secret.is_empty() || payload.pk.is_empty() { 
         warn!(target: "login_events", "User with email ({}) had missing credentials. Aborting.", payload.email);
         return Err(AuthError::MissingCredentials);
     }
@@ -713,13 +786,14 @@ async fn register(
 
     info!(target: "register_events", "Registering user with email ({}): duplicate user not found on the database. Good to go.", payload.email);
 
-    let _ = sqlx::query("INSERT INTO users (name, email, password, verified) VALUES (?, ?, ?, 1)")
+    let _ = sqlx::query("INSERT INTO users (name, email, password, pk, verified) VALUES (?, ?, ?, ?, 1)")
         .bind(payload.name)
         .bind(payload.email.clone())
         .bind(hash_pass(payload.client_secret))
+        .bind(payload.pk)
         .execute(&mut *conn)
         .await
-        .expect("oopsies")
+        .expect("couldnt register on db")
         .last_insert_rowid();
 
     let now = std::time::SystemTime::now()
