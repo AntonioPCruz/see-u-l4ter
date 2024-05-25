@@ -7,12 +7,14 @@ use axum::{
     routing::{get, post},
     BoxError, Extension, Json,
 };
+use axum_extra::headers::Expect;
 use hmac::Mac;
 use log::{info, warn};
 
 use rsa::pkcs1::RsaPublicKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs1v15::{SigningKey, VerifyingKey};
+use rsa::pkcs8::DecodePublicKey;
 use rsa::signature::{Keypair, RandomizedSigner, SignatureEncoding, Verifier};
 use rsa::sha2::Digest;
 
@@ -252,7 +254,13 @@ async fn encrypt_aux(
 
     let pk: String = pk.get(0);
     let pk = pk.trim();
-    let public_key: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::<Sha256>::from_pkcs1_pem(&pk).expect("Couldnt get pk");
+
+    // try grabbing the public key in both PKCS1 and PKCS8 formats
+    let public_key: Result<rsa::pkcs1v15::VerifyingKey<Sha256>, _> = rsa::pkcs1v15::VerifyingKey::<Sha256>::from_pkcs1_pem(&pk);
+    let public_key = match public_key {
+        Ok(k) => k,
+        Err(_) => rsa::pkcs1v15::VerifyingKey::<Sha256>::from_public_key_pem(&pk).expect("Couldnt get pk")
+    };
 
     info!(target: "encrypting_events", "User ({}): Verifying the signature", claims.email);
 
@@ -475,7 +483,13 @@ async fn decrypt_aux(
 
     let pk: String = pk.get(0);
     let pk = pk.trim();
-    let public_key: rsa::pkcs1v15::VerifyingKey<Sha256> = rsa::pkcs1v15::VerifyingKey::<Sha256>::from_pkcs1_pem(&pk).expect("Couldnt get pk");
+
+    // try grabbing the public key in both PKCS1 and PKCS8 formats
+    let public_key: Result<rsa::pkcs1v15::VerifyingKey<Sha256>, _> = rsa::pkcs1v15::VerifyingKey::<Sha256>::from_pkcs1_pem(&pk);
+    let public_key = match public_key {
+        Ok(k) => k,
+        Err(_) => rsa::pkcs1v15::VerifyingKey::<Sha256>::from_public_key_pem(&pk).expect("Couldnt get pk")
+    };
 
     info!(target: "decrypting_events", "User ({}): Verifying the signature", claims.email);
 
