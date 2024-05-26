@@ -605,6 +605,9 @@ async fn decrypt_aux(
     let plaintext = decrypt(cipher, &key[0..16], Some(IV), &file_buf).expect("Decrypting failed");
     info!(target: "decrypting_events", "User ({}): Decryption ended. Key used = {}", claims.email, BASE64_STANDARD.encode(&key[0..16]));
 
+    let hmac_result = hmac.hash(&key[16..32], plaintext.as_slice());
+    info!(target: "decrypting_events", "User ({}): HMAC ended. Key used = {}", claims.email, BASE64_STANDARD.encode(&key[16..32]));
+
     let mut buf = vec![0; plaintext.len() + 1000];
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut buf.as_mut_slice()[..]));
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
@@ -615,6 +618,14 @@ async fn decrypt_aux(
         .expect("Couldnt write to file inside zip");
 
     info!(target: "decrypting_events", "User ({}): Plaintext stored inside zip.", claims.email);
+
+    let filename_hmac = format!("{}.hmac", filename.clone());
+    zip.start_file(filename_hmac.clone(), options)
+        .expect("Couldnt create file inside zip");
+    zip.write(hmac_result.as_slice())
+        .expect("Couldnt write to file inside zip");
+
+    info!(target: "decrypting_events", "User ({}): HMAC stored inside zip.", claims.email);
 
     zip.finish().expect("Couldnt finish zip");
     drop(zip);
