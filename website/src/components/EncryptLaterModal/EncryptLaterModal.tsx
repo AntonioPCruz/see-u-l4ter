@@ -9,7 +9,7 @@ import {
   RadioGroup,
 } from "@mui/material";
 import { useEffect, useState } from "react";
-import { useFilePicker } from "use-file-picker";
+// import { useFilePicker } from "use-file-picker";
 import { baseUrl } from "../../services/api";
 import { getAuthToken, getPrivateKey } from "../../services/storeAuth";
 import { useNavigate } from "react-router-dom";
@@ -37,32 +37,32 @@ interface IProps {
 }
 
 export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
-  const { openFilePicker, plainFiles, filesContent } = useFilePicker({
-    multiple: false,
-  });
+  // const { openFilePicker, plainFiles, filesContent } = useFilePicker({
+  //   multiple: false,
+  // });
   const navigate = useNavigate();
 
   const [file, setFile] = useState<File>();
-  const [fileName, setFileName] = useState("");
-  const [fileContent, setFileContent] = useState("");
+  // const [fileName, setFileName] = useState("");
+  // const [fileContent, setFileContent] = useState("");
   const [cipherMode, setCipherMode] = useState("1");
   const [hmacMode, setHmacMode] = useState("1");
   const [timestamp, setTimestamp] = useState("");
 
-  useEffect(() => {
-    if (
-      filesContent.length &&
-      filesContent[0].name &&
-      filesContent[0].content
-    ) {
-      setFileName(filesContent[0].name.split(".")[0]);
-      setFileContent(filesContent[0].content);
-    }
-  }, [filesContent]);
+  // useEffect(() => {
+  //   if (
+  //     filesContent.length &&
+  //     filesContent[0].name &&
+  //     filesContent[0].content
+  //   ) {
+  //     setFileName(filesContent[0].name.split(".")[0]);
+  //     setFileContent(filesContent[0].content);
+  //   }
+  // }, [filesContent]);
 
-  useEffect(() => {
-    setFile(plainFiles[0]);
-  }, [plainFiles]);
+  // useEffect(() => {
+  //   setFile(plainFiles[0]);
+  // }, [plainFiles]);
 
   useEffect(() => {
     if (!open) {
@@ -72,8 +72,8 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
 
   const clearFile = () => {
     setFile(undefined);
-    setFileName("");
-    setFileContent("");
+    // setFileName("");
+    // setFileContent("");
   };
 
   const handleChangeTimestamp = (newDate: dayjs.Dayjs | null) => {
@@ -112,11 +112,11 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
       return navigate("/login");
     }
 
-    if (!file || !fileName || !cipherMode || !hmacMode) {
+    if (!file || !cipherMode || !hmacMode) {
       return alert("Fill every field.");
     }
 
-    const fileToSend = new Blob([fileContent]);
+    // const fileToSend = new Blob([fileContent]);
 
     const privateKey = getPrivateKey();
 
@@ -124,14 +124,14 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
       return alert("Erro ao obter chave privada... Inicie sessao novamente.");
     }
 
-    const signature = await generateDigitalSignature(privateKey, fileToSend);
+    const signature = await generateDigitalSignature(privateKey, file);
 
     const formData = new FormData();
-    formData.append("data", fileToSend, file.name);
+    formData.append("data", file, file.name);
     formData.append("sig", new Blob([signature]));
     formData.append("cipher", cipherMode);
     formData.append("hmac", hmacMode);
-    formData.append("filename", fileName);
+    formData.append("filename", file.name);
     formData.append("timestamp", timestamp);
 
     try {
@@ -185,13 +185,14 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
         <div className="file-to-encrypt-div">
           <p>File to encrypt</p>
 
-          <Button
-            className="file-to-encrypt-div__pick-file-btn"
-            variant="contained"
-            onClick={openFilePicker}
-          >
-            Open file
-          </Button>
+          <input
+            type="file"
+            onChange={(file) => {
+              if (file.target.files?.length) {
+                setFile(file.target.files[0]);
+              }
+            }}
+          />
 
           {file?.name && (
             <div>
