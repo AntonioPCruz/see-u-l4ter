@@ -161,7 +161,18 @@ export const Dashboard = () => {
         </div>
       </header>
 
-      <Stack style={{ marginTop: 50, padding: "0 50px" }} spacing={2}>
+      <div
+        style={{
+          width: 500,
+          display: "flex",
+          alignSelf: "center",
+          justifyContent: "center",
+          alignItems: "stretch",
+          flexDirection: "column",
+          marginTop: 200,
+          padding: "0 50px",
+        }}
+      >
         <ColorButton
           onClick={handleOpenEncryptNowModal}
           className="dashboard-div-btn"
@@ -201,7 +212,7 @@ export const Dashboard = () => {
         >
           Old keys
         </ColorButton>
-      </Stack>
+      </div>
 
       {/* <div className="dashboard-div">
 

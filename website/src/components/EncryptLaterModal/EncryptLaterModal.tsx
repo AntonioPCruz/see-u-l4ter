@@ -43,26 +43,9 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
   const navigate = useNavigate();
 
   const [file, setFile] = useState<File>();
-  // const [fileName, setFileName] = useState("");
-  // const [fileContent, setFileContent] = useState("");
   const [cipherMode, setCipherMode] = useState("1");
   const [hmacMode, setHmacMode] = useState("1");
   const [timestamp, setTimestamp] = useState("");
-
-  // useEffect(() => {
-  //   if (
-  //     filesContent.length &&
-  //     filesContent[0].name &&
-  //     filesContent[0].content
-  //   ) {
-  //     setFileName(filesContent[0].name.split(".")[0]);
-  //     setFileContent(filesContent[0].content);
-  //   }
-  // }, [filesContent]);
-
-  // useEffect(() => {
-  //   setFile(plainFiles[0]);
-  // }, [plainFiles]);
 
   useEffect(() => {
     if (!open) {
@@ -72,8 +55,6 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
 
   const clearFile = () => {
     setFile(undefined);
-    // setFileName("");
-    // setFileContent("");
   };
 
   const handleChangeTimestamp = (newDate: dayjs.Dayjs | null) => {
@@ -95,8 +76,6 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
     document.body.appendChild(a);
     a.style = "display: none";
     return function (data: any, fileName: string) {
-      // var json = JSON.stringify(data);
-      // var blob = new Blob([json], { type: "octet/stream" });
       var url = window.URL.createObjectURL(data);
 
       a.href = url;
@@ -119,8 +98,6 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
     }
 
     console.log(file, file.name);
-
-    // const fileToSend = new Blob([fileContent]);
 
     const privateKey = getPrivateKey();
 
