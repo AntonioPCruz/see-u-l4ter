@@ -1,7 +1,5 @@
 # TODO readme file
-- [ ] traduzir pra EN
 - [ ] por exemplos da cli e tirar os curls
-- [ ] por o enunciado
 - [ ] agradecimentos ao prof
 
 # server
