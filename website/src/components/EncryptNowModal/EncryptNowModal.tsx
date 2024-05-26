@@ -132,6 +132,11 @@ export const EncryptNowModal = ({ open, handleClose }: IProps) => {
         return alert("Something went wrong...");
       }
 
+      if (reqBlob.type === "application/json") {
+        const jsonRes = JSON.parse(await reqBlob.text());
+        return alert(jsonRes.error);
+      }
+
       saveData(reqBlob, file.name + ".zip");
 
       // const blobUrl = window.URL.createObjectURL(reqBlob);

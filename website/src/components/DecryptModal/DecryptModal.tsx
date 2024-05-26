@@ -116,6 +116,11 @@ export const DecryptModal = ({ open, handleClose, userProfile }: IProps) => {
 
       const reqBlob = await req.blob();
 
+      if (reqBlob.type === "application/json") {
+        const jsonRes = JSON.parse(await reqBlob.text());
+        return alert(jsonRes.error);
+      }
+
       if (!reqBlob) {
         return alert("Something went wrong...");
       }

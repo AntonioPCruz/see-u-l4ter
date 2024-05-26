@@ -78,11 +78,13 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
 
   const handleChangeTimestamp = (newDate: dayjs.Dayjs | null) => {
     if (newDate) {
+      newDate = newDate.add(-newDate.utcOffset(), "minute");
+
       const day = newDate?.get("D");
       const month = newDate?.get("M");
       const year = newDate?.get("y");
       const hour = newDate?.get("hour");
-      const minute = newDate?.get("m");
+      const minute = newDate?.get("minute");
 
       setTimestamp(`${year}-${month + 1}-${day}-${hour}:${minute}`);
     }
@@ -116,6 +118,8 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
       return alert("Fill every field.");
     }
 
+    console.log(file, file.name);
+
     // const fileToSend = new Blob([fileContent]);
 
     const privateKey = getPrivateKey();
@@ -148,6 +152,11 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
 
       if (!reqBlob) {
         return alert("Something went wrong...");
+      }
+
+      if (reqBlob.type === "application/json") {
+        const jsonRes = JSON.parse(await reqBlob.text());
+        return alert(jsonRes.error);
       }
 
       saveData(reqBlob, file.name + ".zip");

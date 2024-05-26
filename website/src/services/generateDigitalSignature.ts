@@ -60,8 +60,6 @@ export const generateRsaKeyPair = async () => {
 
   const publicKeyAsPEM = spkiToPEM(exportedPublicKey);
 
-  console.log(publicKeyAsPEM);
-
   if (!privateKey || !publicKeyAsPEM) {
     return {
       error: "Error generating keys",
