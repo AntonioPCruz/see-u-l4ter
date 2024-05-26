@@ -88,6 +88,22 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
     }
   };
 
+  const saveData = (function () {
+    var a = document.createElement("a") as any;
+    document.body.appendChild(a);
+    a.style = "display: none";
+    return function (data: any, fileName: string) {
+      // var json = JSON.stringify(data);
+      // var blob = new Blob([json], { type: "octet/stream" });
+      var url = window.URL.createObjectURL(data);
+
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    };
+  })();
+
   const onSubmit = async () => {
     const { tokenType, token } = getAuthToken();
 
@@ -134,8 +150,10 @@ export const EncryptLaterModal = ({ open, handleClose }: IProps) => {
         return alert("Something went wrong...");
       }
 
-      const blobUrl = window.URL.createObjectURL(reqBlob);
-      window.location.assign(blobUrl);
+      saveData(reqBlob, file.name + ".zip");
+
+      // const blobUrl = window.URL.createObjectURL(reqBlob);
+      // window.location.assign(blobUrl);
 
       handleClose();
     } catch (error) {

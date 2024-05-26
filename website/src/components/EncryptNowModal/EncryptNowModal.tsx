@@ -9,7 +9,6 @@ import {
   RadioGroup,
 } from "@mui/material";
 import { useEffect, useState } from "react";
-import { useFilePicker } from "use-file-picker";
 import { baseUrl } from "../../services/api";
 import { getAuthToken, getPrivateKey } from "../../services/storeAuth";
 import { useNavigate } from "react-router-dom";

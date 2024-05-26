@@ -126,7 +126,7 @@ export const DecryptModal = ({ open, handleClose, userProfile }: IProps) => {
       // imagem.zip
       // imagem.decoded.zip
 
-      saveData(reqBlob, file.name + ".decoded.zip");
+      saveData(reqBlob, file.name.replace(".zip", ".decoded.zip"));
 
       // const blobUrl = window.URL.createObjectURL(reqBlob);
       // window.location.assign(blobUrl);
