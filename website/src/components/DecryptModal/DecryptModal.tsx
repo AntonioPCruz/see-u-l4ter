@@ -51,6 +51,22 @@ export const DecryptModal = ({ open, handleClose, userProfile }: IProps) => {
     setFile(undefined);
   };
 
+  const saveData = (function () {
+    var a = document.createElement("a") as any;
+    document.body.appendChild(a);
+    a.style = "display: none";
+    return function (data: any, fileName: string) {
+      // var json = JSON.stringify(data);
+      // var blob = new Blob([json], { type: "octet/stream" });
+      var url = window.URL.createObjectURL(data);
+
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    };
+  })();
+
   const onSubmit = async () => {
     const { tokenType, token } = getAuthToken();
 
@@ -104,8 +120,16 @@ export const DecryptModal = ({ open, handleClose, userProfile }: IProps) => {
         return alert("Something went wrong...");
       }
 
-      const blobUrl = window.URL.createObjectURL(reqBlob);
-      window.location.assign(blobUrl);
+      // const fileName = file.name;
+      // const index = fileName.lastIndexOf(".");
+      // fileName.
+      // imagem.zip
+      // imagem.decoded.zip
+
+      saveData(reqBlob, file.name + ".decoded.zip");
+
+      // const blobUrl = window.URL.createObjectURL(reqBlob);
+      // window.location.assign(blobUrl);
 
       handleClose();
     } catch (error) {
