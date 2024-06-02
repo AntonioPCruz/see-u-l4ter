@@ -308,69 +308,65 @@ mod tests {
     #[test]
     fn test_clamp_to_5_minutes() {
         // Test a time where minutes are not at a multiple of 5
-        let dt1 = chrono::Local
+        let dt1 = chrono::Utc
             .with_ymd_and_hms(2024, 12, 3, 14, 37, 0)
             .unwrap();
         assert_eq!(
             clamp_to_5_minutes(dt1),
-            chrono::Local
+            chrono::Utc
                 .with_ymd_and_hms(2024, 12, 3, 14, 35, 0)
                 .unwrap()
         );
 
         // Test a time where minutes are at a multiple of 5
-        let dt2 = chrono::Local
+        let dt2 = chrono::Utc
             .with_ymd_and_hms(2024, 12, 3, 14, 30, 0)
             .unwrap();
         assert_eq!(
             clamp_to_5_minutes(dt2),
-            chrono::Local
+            chrono::Utc
                 .with_ymd_and_hms(2024, 12, 3, 14, 30, 0)
                 .unwrap()
         );
 
         // Test a time where minutes are exactly at 0
-        let dt3 = chrono::Local
+        let dt3 = chrono::Utc
             .with_ymd_and_hms(2024, 12, 3, 17, 45, 0)
             .unwrap();
         assert_eq!(
             clamp_to_5_minutes(dt3),
-            chrono::Local
+            chrono::Utc
                 .with_ymd_and_hms(2024, 12, 3, 17, 45, 0)
                 .unwrap()
         );
 
         // Test a time where minutes are exactly at 55
-        let dt4 = chrono::Local
+        let dt4 = chrono::Utc
             .with_ymd_and_hms(2024, 12, 3, 17, 55, 0)
             .unwrap();
         assert_eq!(
             clamp_to_5_minutes(dt4),
-            chrono::Local
+            chrono::Utc
                 .with_ymd_and_hms(2024, 12, 3, 17, 55, 0)
                 .unwrap()
         );
 
         // Test a time where minutes are at 59
-        let dt5 = chrono::Local
+        let dt5 = chrono::Utc
             .with_ymd_and_hms(2024, 12, 3, 17, 59, 0)
             .unwrap();
         assert_eq!(
             clamp_to_5_minutes(dt5),
-            chrono::Local
+            chrono::Utc
                 .with_ymd_and_hms(2024, 12, 3, 17, 55, 0)
                 .unwrap()
         );
 
         // Test a time where minutes are at 1
-        let dt5 = chrono::Local
-            .with_ymd_and_hms(2024, 12, 3, 17, 1, 0)
-            .unwrap();
+        let dt5 = chrono::Utc.with_ymd_and_hms(2024, 12, 3, 17, 1, 0).unwrap();
         assert_eq!(
             clamp_to_5_minutes(dt5),
-            chrono::Local
-                .with_ymd_and_hms(2024, 12, 3, 17, 0, 0)
-                .unwrap()
+            chrono::Utc.with_ymd_and_hms(2024, 12, 3, 17, 0, 0).unwrap()
         );
     }
 }
